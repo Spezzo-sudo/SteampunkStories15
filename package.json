@@ -14,8 +14,8 @@
   },
   "dependencies": {
     "immer": "^10.1.1",
-    "react-dom": "^19.2.0",
     "react": "^19.2.0",
+    "react-dom": "^19.2.0",
     "zustand": "^5.0.8"
   },
   "devDependencies": {
@@ -28,6 +28,7 @@
     "eslint-plugin-react": "^7.37.2",
     "eslint-plugin-react-hooks": "^5.1.0",
     "globals": "^15.14.0",
+    "happy-dom": "^20.0.8",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
     "vitest": "^3.0.2"

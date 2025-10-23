@@ -101,7 +101,7 @@ const HexMap: React.FC<HexMapProps> = ({ systems, players, alliances, selectedSy
   }
 
   const [first, ...rest] = positioned;
-  const bounds = rest.reduce(
+  const pixelBounds = rest.reduce(
     (acc, entry) => ({
       minX: Math.min(acc.minX, entry.x),
       maxX: Math.max(acc.maxX, entry.x),
@@ -111,8 +111,8 @@ const HexMap: React.FC<HexMapProps> = ({ systems, players, alliances, selectedSy
     { minX: first.x, maxX: first.x, minY: first.y, maxY: first.y },
   );
   const padding = HEX_SIZE * 2.5;
-  const width = bounds.maxX - bounds.minX + padding * 2;
-  const height = bounds.maxY - bounds.minY + padding * 2;
+  const width = pixelBounds.maxX - pixelBounds.minX + padding * 2;
+  const height = pixelBounds.maxY - pixelBounds.minY + padding * 2;
 
   const handleWheel = (event: React.WheelEvent<SVGSVGElement>) => {
     event.preventDefault();
