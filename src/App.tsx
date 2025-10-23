@@ -7,6 +7,7 @@ import TopBar from '@/components/layout/TopBar';
 import StickyTopbarShadow from '@/components/ui/StickyTopbarShadow';
 import ToastViewport from '@/components/ui/ToastViewport';
 import PlayerModal from '@/components/directory/PlayerModal';
+import LoadingOverlay from '@/components/ui/LoadingOverlay';
 import { useDirectoryStore } from '@/store/directoryStore';
 import { useMessageStore } from '@/store/messageStore';
 import { useAllianceStore } from '@/store/allianceStore';
@@ -23,11 +24,18 @@ const App: React.FC = () => {
   const closePlayerProfile = useDirectoryStore((state) => state.closePlayerProfile);
   const favoritePlanet = useDirectoryStore((state) => state.favoritePlanet);
   const initializeDirectory = useDirectoryStore((state) => state.initialize);
+  const isDirectoryReady = useDirectoryStore((state) => state.isReady);
+  const isDirectoryLoading = useDirectoryStore((state) => state.isLoading);
+  const directoryLoadProgress = useDirectoryStore((state) => state.loadProgress);
+  const directoryError = useDirectoryStore((state) => state.error);
   const ensureDirectRoom = useMessageStore((state) => state.ensureDirectRoom);
   const openRoom = useMessageStore((state) => state.openRoom);
   const addNote = useAllianceStore((state) => state.addNote);
   const initializeAlliance = useAllianceStore((state) => state.initialize);
   const profile = openProfileId ? profiles[openProfileId] : undefined;
+  const loadingMessage = isDirectoryLoading
+    ? 'Sternenkarten, Stationen und Profile werden vorbereitet.'
+    : undefined;
 
   useEffect(() => {
     initializeDirectory().catch(() => undefined);
@@ -60,6 +68,13 @@ const App: React.FC = () => {
         </div>
       </div>
       <MobileNav />
+      {(!isDirectoryReady || isDirectoryLoading) && (
+        <LoadingOverlay
+          progress={directoryLoadProgress}
+          message={loadingMessage}
+          error={directoryError}
+        />
+      )}
       {profile && (
         <PlayerModal
           profile={profile}

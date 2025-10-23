@@ -6,6 +6,7 @@ import {
   PlayerProfile,
   PlayerPlanetSummary,
 } from '@/types';
+import { fetchDirectorySnapshot } from '@/lib/api/directory';
 import { ALLIANCE_DIRECTORY, CURRENT_PLAYER_ID, PLAYER_DIRECTORY, SYSTEM_SNAPSHOT } from '@/lib/mockFactory';
 import { formatSystemCoordinate } from '@/lib/hex';
 
@@ -16,6 +17,11 @@ interface DirectoryState {
   openProfileId: string | null;
   profiles: Record<string, PlayerProfile>;
   currentPlayerId: string;
+  allianceColors: Record<string, string>;
+  isLoading: boolean;
+  isReady: boolean;
+  loadProgress: number;
+  error?: string;
 }
 
 interface DirectoryActions {
@@ -26,6 +32,8 @@ interface DirectoryActions {
   getSystemById: (systemId: string) => GalaxySystem | undefined;
   getAllianceColor: (allianceId?: string) => string | undefined;
   setPlanetOwner: (planetId: string, ownerId: string, allianceId?: string) => void;
+  initialize: () => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 const deriveProfile = (
@@ -60,6 +68,38 @@ const deriveProfile = (
   };
 };
 
+const buildAllianceColorMap = (alliances: { id: string; color: string }[]): Record<string, string> =>
+  alliances.reduce<Record<string, string>>((accumulator, alliance) => {
+    accumulator[alliance.id] = alliance.color;
+    return accumulator;
+  }, {});
+
+const collectPlanetIds = (systems: GalaxySystem[]): Set<string> => {
+  const ids = new Set<string>();
+  systems.forEach((system) => {
+    system.planets.forEach((planet) => {
+      ids.add(planet.id);
+    });
+  });
+  return ids;
+};
+
+const sanitizeFavorites = (favorites: string[], systems: GalaxySystem[]): string[] => {
+  const validIds = collectPlanetIds(systems);
+  return favorites.filter((planetId) => validIds.has(planetId));
+};
+
+const rebuildProfiles = (
+  existingProfiles: Record<string, PlayerProfile>,
+  systems: GalaxySystem[],
+  favorites: string[],
+  players: Player[],
+): Record<string, PlayerProfile> =>
+  Object.keys(existingProfiles).reduce<Record<string, PlayerProfile>>((accumulator, playerId) => {
+    accumulator[playerId] = deriveProfile(playerId, systems, favorites, players);
+    return accumulator;
+  }, {});
+
 /**
  * Zustand store for directory, profile and favorites state management.
  */
@@ -70,6 +110,11 @@ export const useDirectoryStore = create<DirectoryState & DirectoryActions>((set,
   openProfileId: null,
   profiles: {},
   currentPlayerId: CURRENT_PLAYER_ID,
+  allianceColors: buildAllianceColorMap(ALLIANCE_DIRECTORY),
+  isLoading: false,
+  isReady: false,
+  loadProgress: 0,
+  error: undefined,
 
   openPlayerProfile: (playerId) => {
     set((state) => {
@@ -121,8 +166,12 @@ export const useDirectoryStore = create<DirectoryState & DirectoryActions>((set,
     if (!allianceId) {
       return undefined;
     }
-    const alliance = ALLIANCE_DIRECTORY.find((entry) => entry.id === allianceId);
-    return alliance?.color;
+    const colors = get().allianceColors;
+    if (colors[allianceId]) {
+      return colors[allianceId];
+    }
+    const fallback = ALLIANCE_DIRECTORY.find((entry) => entry.id === allianceId);
+    return fallback?.color;
   },
 
   setPlanetOwner: (planetId, ownerId, allianceId) => {
@@ -159,5 +208,56 @@ export const useDirectoryStore = create<DirectoryState & DirectoryActions>((set,
         profiles,
       };
     });
+  },
+
+  initialize: async () => {
+    if (get().isReady || get().isLoading) {
+      return;
+    }
+    await get().refresh();
+  },
+
+  refresh: async () => {
+    set({ isLoading: true, error: undefined, loadProgress: 5 });
+    try {
+      const responsePromise = fetchDirectorySnapshot();
+      set({ loadProgress: 35 });
+      const response = await responsePromise;
+      set({ loadProgress: 75 });
+      set((state) => {
+        const favorites = sanitizeFavorites(state.favorites, response.systems);
+        const profiles = rebuildProfiles(state.profiles, response.systems, favorites, response.players);
+        return {
+          systems: response.systems,
+          players: response.players,
+          favorites,
+          profiles,
+          currentPlayerId: response.currentPlayerId,
+          allianceColors: buildAllianceColorMap(response.alliances),
+          isLoading: false,
+          isReady: true,
+          loadProgress: 100,
+        };
+      });
+    } catch (error) {
+      console.error('Directory snapshot fallback active:', error);
+      set({ loadProgress: 90 });
+      set((state) => {
+        const favorites = sanitizeFavorites(state.favorites, SYSTEM_SNAPSHOT);
+        const profiles = rebuildProfiles(state.profiles, SYSTEM_SNAPSHOT, favorites, PLAYER_DIRECTORY);
+        return {
+          systems: SYSTEM_SNAPSHOT,
+          players: PLAYER_DIRECTORY,
+          favorites,
+          profiles,
+          currentPlayerId: CURRENT_PLAYER_ID,
+          allianceColors: buildAllianceColorMap(ALLIANCE_DIRECTORY),
+          isLoading: false,
+          isReady: true,
+          loadProgress: 100,
+          error: error instanceof Error ? error.message : 'Unbekannter Fehler beim Laden des Verzeichnisses.',
+        };
+      });
+    }
   },
 }));
