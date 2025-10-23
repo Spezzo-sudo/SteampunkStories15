@@ -48,6 +48,7 @@ export enum View {
   Werft = 'Werft',
   Galaxie = 'Galaxie',
   Bande = 'Bande',
+  Techtree = 'Techtree',
 }
 
 export interface BuildQueueItem {
@@ -91,6 +92,7 @@ export interface GalaxySystem extends GalaxyCoordinates {
   id: string;
   displayName: string;
   planets: GalaxyPlanet[];
+  biomeId?: string;
 }
 
 export interface Player {

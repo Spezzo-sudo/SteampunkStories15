@@ -13,10 +13,11 @@ export interface NavLinkProps {
  */
 export const NAV_LINKS: NavLinkProps[] = [
   { view: View.Uebersicht, label: 'Übersicht', icon: '🧭' },
-  { view: View.Gebaeude, label: 'Gebäude', icon: '🏭' },
-  { view: View.Forschung, label: 'Forschung', icon: '🔬' },
-  { view: View.Werft, label: 'Werft', icon: '🛠️' },
+  { view: View.Gebaeude, label: 'Gebäude', icon: '🏗️' },
+  { view: View.Forschung, label: 'Forschung', icon: '🧪' },
+  { view: View.Werft, label: 'Werft', icon: '⚓' },
   { view: View.Galaxie, label: 'Galaxie', icon: '🪐' },
+  { view: View.Techtree, label: 'Techbaum', icon: '🕸️' },
   { view: View.Bande, label: 'Bande', icon: '🤝' },
 ];
 

@@ -7,6 +7,7 @@ import ResearchView from '@/components/views/ResearchView';
 import GalaxyView from '@/components/views/GalaxyView';
 import WerftView from '@/components/views/WerftView';
 import AllianceView from '@/components/views/AllianceView';
+import TechTreeView from '@/components/views/TechTreeView';
 
 /**
  * Routet den aktiven View-Zustand auf die jeweilige Bildschirmkomponente.
@@ -25,6 +26,8 @@ const MainView: React.FC = () => {
       return <WerftView />;
     case View.Galaxie:
       return <GalaxyView />;
+    case View.Techtree:
+      return <TechTreeView />;
     case View.Bande:
       return <AllianceView />;
     default:
