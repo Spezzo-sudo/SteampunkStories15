@@ -5,18 +5,18 @@ import { View } from '@/types';
 export interface NavLinkProps {
   view: View;
   label: string;
-  icon: string;
+  icon: React.ReactNode;
 }
 
 /**
- * Navigationsdefinition, die sowohl von der Desktop-Sidebar als auch der mobilen Navigation verwendet wird.
+ * Konstante Navigationsdefinition für Desktop- und Mobilnavigation.
  */
 export const NAV_LINKS: NavLinkProps[] = [
-  { view: View.Uebersicht, label: 'Übersicht', icon: '🪐' },
+  { view: View.Uebersicht, label: 'Übersicht', icon: '🧭' },
   { view: View.Gebaeude, label: 'Gebäude', icon: '🏭' },
   { view: View.Forschung, label: 'Forschung', icon: '🔬' },
-  { view: View.Werft, label: 'Werft', icon: '🚀' },
-  { view: View.Galaxie, label: 'Galaxie', icon: '🌌' },
+  { view: View.Werft, label: 'Werft', icon: '🛠️' },
+  { view: View.Galaxie, label: 'Galaxie', icon: '🪐' },
   { view: View.Bande, label: 'Bande', icon: '🤝' },
 ];
 

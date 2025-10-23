@@ -80,7 +80,12 @@ const GameCard: React.FC<GameCardProps> = ({
   return (
     <article className="flex h-full flex-col justify-between rounded-2xl border border-yellow-800/30 bg-black/50 p-5 shadow-lg backdrop-blur">
       <header className="mb-3 border-b border-yellow-800/30 pb-3">
-        <h3 className="text-[clamp(1.2rem,1vw+1rem,1.6rem)] font-cinzel font-semibold text-yellow-300">{name}</h3>
+        <h3
+          className="text-[clamp(1.1rem,0.9vw+1rem,1.5rem)] font-cinzel font-semibold text-yellow-300 leading-snug"
+          style={{ hyphens: 'auto', wordBreak: 'break-word' }}
+        >
+          {name}
+        </h3>
         <p className="mt-1 text-sm text-gray-300">
           Stufe {level}
           {isUpgrading && targetLevel > level && (

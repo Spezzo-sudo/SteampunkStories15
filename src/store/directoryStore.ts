@@ -19,6 +19,11 @@ interface DirectoryState {
 }
 
 interface DirectoryActions {
+  /**
+   * No-op initializer maintained for API compatibility.
+   * The store ships with mock data eagerly loaded, so the promise resolves immediately.
+   */
+  initialize: () => Promise<void>;
   openPlayerProfile: (playerId: string) => void;
   closePlayerProfile: () => void;
   favoritePlanet: (planetId: string) => void;
@@ -70,6 +75,9 @@ export const useDirectoryStore = create<DirectoryState & DirectoryActions>((set,
   openProfileId: null,
   profiles: {},
   currentPlayerId: CURRENT_PLAYER_ID,
+  initialize: async () => {
+    // Mock data already populated; keep the async signature for consumers expecting a promise.
+  },
 
   openPlayerProfile: (playerId) => {
     set((state) => {

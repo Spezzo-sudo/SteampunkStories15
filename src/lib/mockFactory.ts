@@ -8,6 +8,7 @@ import {
   Player,
 } from '@/types';
 import { createGalaxyCoordinate } from '@/lib/hex';
+import { pickBiomeForSector, SectorFeatures } from '@/lib/biomeRules';
 
 interface UniverseSeedOptions {
   allianceCount?: number;
@@ -78,6 +79,8 @@ const PLANET_NAMES = [
   'Sable Crest',
 ];
 
+const STAR_CLASSES: SectorFeatures['starClass'][] = ['O', 'B', 'A', 'F', 'G', 'K', 'M'];
+
 /**
  * Deterministic linear congruential generator to keep mock data stable across reloads.
  */
@@ -86,6 +89,43 @@ const createRandom = (seed: number): RandomFn => {
   return () => {
     state = (1664525 * state + 1013904223) % 0xffffffff;
     return state / 0xffffffff;
+  };
+};
+
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+
+const pseudoNoise = (x: number, y: number, z: number) => {
+  const value = Math.sin(x * 12.9898 + y * 78.233 + z * 37.719) * 43758.5453;
+  return clamp01(value - Math.floor(value));
+};
+
+const createSectorFeatures = (sectorQ: number, sectorR: number, sysIndex: number): SectorFeatures => {
+  const baseAether = pseudoNoise(sectorQ + 11.2, sectorR + 4.7, sysIndex * 0.53);
+  const baseDebris = pseudoNoise(sectorQ + 7.3, sectorR + 12.1, sysIndex * 0.33);
+  const baseTraffic = pseudoNoise(sectorQ + 19.4, sectorR + 8.2, sysIndex * 0.22);
+  const baseLaw = pseudoNoise(sectorQ + 2.4, sectorR + 25.8, sysIndex * 0.12);
+  const baseGravity = pseudoNoise(sectorQ + 17.7, sectorR + 5.1, sysIndex * 0.42);
+  const baseHeat = pseudoNoise(sectorQ + 29.9, sectorR + 3.6, sysIndex * 0.71);
+  const baseHabitability = pseudoNoise(sectorQ + 9.9, sectorR + 14.4, sysIndex * 0.61);
+
+  const aether = clamp01(0.6 * baseAether + 0.4 * baseGravity);
+  const debris = clamp01(0.4 * baseDebris + 0.4 * baseGravity + 0.2 * baseHeat);
+  const traffic = clamp01(0.7 * baseTraffic + 0.3 * baseHabitability);
+  const law = clamp01(0.5 * baseLaw + 0.3 * (1 - baseDebris) + 0.2 * traffic);
+  const gravityShear = clamp01(baseGravity);
+  const heat = clamp01(0.7 * baseHeat + 0.3 * baseAether);
+  const habitability = clamp01(0.6 * baseHabitability + 0.4 * (1 - baseHeat));
+  const starIndex = Math.floor(pseudoNoise(sectorQ, sectorR, sysIndex) * STAR_CLASSES.length) % STAR_CLASSES.length;
+
+  return {
+    starClass: STAR_CLASSES[starIndex],
+    aether,
+    debris,
+    traffic,
+    law,
+    gravityShear,
+    heat,
+    habitability,
   };
 };
 
@@ -126,9 +166,9 @@ const createAllianceRanks = (): AllianceRank[] => [
 ];
 
 /**
- * Generates alliances with random members and base metadata.
+ * Generates mock alliances and assigns players in rough factions.
  */
-export const generateAlliances = (players: Player[], count: number, random: RandomFn): Alliance[] => {
+const generateAlliances = (players: Player[], count: number, random: RandomFn): Alliance[] => {
   const alliances: Alliance[] = [];
   const availablePlayers = [...players];
 
@@ -194,7 +234,7 @@ const generatePlanets = (
   });
 
 /**
- * Generates a grid of systems sized for 100–500 Spieler Mock-Daten.
+ * Generates a grid of systems sized für 100–500 Spieler Mock-Daten.
  */
 export const generateSystems = (
   width: number,
@@ -203,11 +243,36 @@ export const generateSystems = (
   players: Player[],
 ): GalaxySystem[] => {
   const systems: GalaxySystem[] = [];
+  const biomeMap = new Map<string, string>();
+  const neighborOffsets = [
+    { q: 1, r: 0 },
+    { q: 1, r: -1 },
+    { q: 0, r: -1 },
+    { q: -1, r: 0 },
+    { q: -1, r: 1 },
+    { q: 0, r: 1 },
+  ];
+
   for (let sectorQ = 0; sectorQ < width; sectorQ += 1) {
     for (let sectorR = 0; sectorR < height; sectorR += 1) {
       const sysIndex = Math.floor(random() * 5);
       const coordinate = createGalaxyCoordinate(sectorQ, sectorR, sysIndex);
       const id = `system-${sectorQ}-${sectorR}-${sysIndex}`;
+      const axialKey = `${coordinate.axial.q}:${coordinate.axial.r}`;
+      const neighborIds = neighborOffsets
+        .map((offset) => biomeMap.get(`${coordinate.axial.q + offset.q}:${coordinate.axial.r + offset.r}`))
+        .filter((value): value is string => Boolean(value));
+
+      const features = createSectorFeatures(sectorQ, sectorR, sysIndex);
+      const seed =
+        (coordinate.axial.q * 73856093) ^
+        (coordinate.axial.r * 19349663) ^
+        (sysIndex * 83492791) ^
+        (sectorQ * 2654435761) ^
+        (sectorR * 97531);
+      const biome = pickBiomeForSector(features, neighborIds.length ? { ids: neighborIds } : undefined, seed);
+      biomeMap.set(axialKey, biome.id);
+
       systems.push({
         id,
         displayName: `Sektor ${sectorQ}:${sectorR} · ${sysIndex.toString().padStart(2, '0')}`,
@@ -215,6 +280,7 @@ export const generateSystems = (
         sectorR,
         sysIndex,
         axial: coordinate.axial,
+        biomeId: biome.id,
         planets: generatePlanets(id, 7, random, players),
       });
     }
@@ -257,6 +323,6 @@ export const PLAYER_DIRECTORY = DEFAULT_UNIVERSE.players;
 export const ALLIANCE_DIRECTORY = DEFAULT_UNIVERSE.alliances;
 
 /**
- * ID of the locally controlled commander for filtering helpers.
+ * ID of the locally controlled commander für Filtering-Helfer.
  */
 export const CURRENT_PLAYER_ID = PLAYER_DIRECTORY[0]?.id ?? 'player-1';

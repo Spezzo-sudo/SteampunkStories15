@@ -2,6 +2,8 @@ import React, { useEffect } from 'react';
 import { GalaxySystem, MissionType } from '@/types';
 import { formatSystemCoordinate } from '@/lib/hex';
 import { FOCUS_OUTLINE } from '@/styles/tokens';
+import { BIOMES } from '@/constants/biomes';
+import { biomeToTileStyle } from '@/lib/hexRender';
 
 interface SystemModalProps {
   system: GalaxySystem;
@@ -44,6 +46,8 @@ const SystemModal: React.FC<SystemModalProps> = ({
   }, [onClose]);
 
   const coordinate = formatSystemCoordinate(system);
+  const systemBiome = system.biomeId ? BIOMES[system.biomeId] : undefined;
+  const biomeStyle = systemBiome ? biomeToTileStyle(systemBiome) : undefined;
 
   return (
     <div
@@ -58,6 +62,14 @@ const SystemModal: React.FC<SystemModalProps> = ({
             <p className="text-xs uppercase tracking-wide text-yellow-300">Sektor {system.sectorQ}:{system.sectorR}</p>
             <h2 className="text-[clamp(1.5rem,1vw+1.2rem,2.1rem)] font-cinzel text-yellow-200">System {system.displayName}</h2>
             <p className="text-xs text-gray-400">Koordinate {coordinate}</p>
+            {systemBiome && (
+              <p className="mt-1 text-xs text-gray-300">
+                Biom:{' '}
+                <span style={{ color: biomeStyle?.accent ?? '#facc15' }}>
+                  {systemBiome.name}
+                </span>
+              </p>
+            )}
           </div>
           <div className="flex gap-2">
             <button

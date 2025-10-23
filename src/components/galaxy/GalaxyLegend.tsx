@@ -1,8 +1,7 @@
 import React from 'react';
-import { PlanetBiome } from '@/types';
 
 interface BiomeEntry {
-  id: PlanetBiome;
+  id: string;
   label: string;
   fill: string;
 }

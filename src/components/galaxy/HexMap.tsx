@@ -1,124 +1,288 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alliance, GalaxySystem, Player } from '@/types';
-import {
-  axialToPixel,
-  buildHexPath,
-  computeVisibleAxialBounds,
-  describeCoordinate,
-  filterSystemsByBounds,
-  formatSystemCoordinate,
-  getHexHeight,
-} from '@/lib/hex';
+import { BIOMES } from '@/constants/biomes';
+import { biomeToTileStyle } from '@/lib/hexRender';
+import { axialToPixel, buildHexPath, describeCoordinate, formatSystemCoordinate, getHexHeight } from '@/lib/hex';
 import OwnerChips from '@/components/galaxy/OwnerChips';
 
 interface HexMapProps {
   systems: GalaxySystem[];
   players: Player[];
   alliances: Alliance[];
+  filteredSystemIds: Set<string>;
+  highlightedAllianceIds: string[];
   selectedSystemId?: string | null;
   onSelect: (system: GalaxySystem) => void;
   zoom: number;
   onZoomChange: (value: number) => void;
 }
 
-const HEX_SIZE = 42;
-const findPlayer = (players: Player[], id?: string) => players.find((player) => player.id === id);
-const findAlliance = (alliances: Alliance[], id?: string) => alliances.find((alliance) => alliance.id === id);
+interface OwnerSummary {
+  owners: { id: string; label: string; color: string }[];
+  extraCount: number;
+}
 
-const aggregateOwners = (system: GalaxySystem, players: Player[], alliances: Alliance[]) => {
+interface PositionedSystem {
+  system: GalaxySystem;
+  translatedX: number;
+  translatedY: number;
+  ownerSummary: OwnerSummary;
+  fill: string;
+  stroke: string;
+  accent: string;
+  isFiltered: boolean;
+  isHighlighted: boolean;
+  highlightColor: string | null;
+  highlightedTags: string[];
+}
+
+interface LayoutMetadata {
+  entries: PositionedSystem[];
+  bounds: {
+    width: number;
+    height: number;
+  } | null;
+}
+
+const HEX_SIZE = 48;
+const PADDING = HEX_SIZE * 3;
+const MIN_ZOOM = 0.35;
+const MAX_ZOOM = 3.5;
+
+const aggregateOwners = (system: GalaxySystem, players: Player[], alliances: Alliance[]): OwnerSummary => {
   const ownerMap = new Map<string, { label: string; color: string; count: number }>();
   system.planets.forEach((planet) => {
     if (!planet.ownerId) {
       return;
     }
-    const player = findPlayer(players, planet.ownerId);
-    const alliance = findAlliance(alliances, planet.allianceId);
+    const player = players.find((entry) => entry.id === planet.ownerId);
+    const alliance = alliances.find((entry) => entry.id === planet.allianceId);
     const key = planet.ownerId;
-    const label = alliance ? `${alliance.tag}` : player?.name ?? 'Unbekannt';
+    const label = alliance ? alliance.tag : player?.name ?? 'Unbekannt';
     const color = alliance?.color ?? player?.color ?? '#facc15';
-    const entry = ownerMap.get(key);
-    if (entry) {
-      entry.count += 1;
+    const current = ownerMap.get(key);
+    if (current) {
+      current.count += 1;
     } else {
       ownerMap.set(key, { label, color, count: 1 });
     }
   });
+
   const owners = Array.from(ownerMap.values())
     .sort((a, b) => b.count - a.count)
     .map((entry, index) => ({ id: `${system.id}-owner-${index}`, label: entry.label, color: entry.color }));
-  const extraCount = owners.length > 3 ? owners.length - 3 : 0;
+
   return {
     owners: owners.slice(0, 3),
-    extraCount,
+    extraCount: Math.max(0, owners.length - 3),
   };
 };
 
-/**
- * Interactive hex map with aggregated owner chips for each rendered system.
- */
-const HexMap: React.FC<HexMapProps> = ({ systems, players, alliances, selectedSystemId, onSelect, zoom, onZoomChange }) => {
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const dragStart = useRef<{ x: number; y: number } | null>(null);
-  const [center, setCenter] = useState({ q: 0, r: 0 });
+const clampColorComponent = (value: number) => Math.min(255, Math.max(0, value));
 
-  useEffect(() => {
-    const selected = systems.find((system) => system.id === selectedSystemId);
-    if (selected) {
-      setCenter(selected.axial);
-    }
-  }, [selectedSystemId, systems]);
+const hexToRgb = (hex: string) => {
+  const normalized = hex.replace('#', '');
+  if (normalized.length !== 6) {
+    return { r: 250, g: 204, b: 33 };
+  }
+  const r = Number.parseInt(normalized.slice(0, 2), 16);
+  const g = Number.parseInt(normalized.slice(2, 4), 16);
+  const b = Number.parseInt(normalized.slice(4, 6), 16);
+  return { r, g, b };
+};
 
-  const bounds = useMemo(() => computeVisibleAxialBounds(center, Math.max(6, Math.round(14 / zoom))), [center, zoom]);
-  const visibleSystems = useMemo(() => filterSystemsByBounds(systems, bounds), [systems, bounds]);
+const rgbToHex = (r: number, g: number, b: number) =>
+  `#${clampColorComponent(r).toString(16).padStart(2, '0')}${clampColorComponent(g)
+    .toString(16)
+    .padStart(2, '0')}${clampColorComponent(b).toString(16).padStart(2, '0')}`;
 
-  const positioned = useMemo(
-    () =>
-      visibleSystems.map((system) => {
-        const { x, y } = axialToPixel(system.axial, HEX_SIZE);
-        return { system, x, y, chips: aggregateOwners(system, players, alliances) };
+const blendColors = (colors: string[]): string => {
+  if (colors.length === 0) {
+    return '#facc15';
+  }
+  const { r, g, b } = colors
+    .map((color) => hexToRgb(color))
+    .reduce(
+      (acc, current) => ({
+        r: acc.r + current.r,
+        g: acc.g + current.g,
+        b: acc.b + current.b,
       }),
-    [visibleSystems, players, alliances],
-  );
-
-  if (positioned.length === 0) {
-    const fallbackHeight = getHexHeight(HEX_SIZE) * 6;
-    const fallbackWidth = HEX_SIZE * 12;
-    return (
-      <div className="steampunk-glass steampunk-border rounded-lg p-4">
-        <svg viewBox={`0 0 ${fallbackWidth} ${fallbackHeight}`} className="h-[420px] w-full" role="presentation">
-          <title>Keine Systeme sichtbar</title>
-          <text
-            x="50%"
-            y="50%"
-            textAnchor="middle"
-            className="font-cinzel fill-yellow-200 text-[0.85rem]"
-          >
-            Keine Systeme sichtbar
-          </text>
-        </svg>
-      </div>
+      { r: 0, g: 0, b: 0 },
     );
+  const count = colors.length;
+  return rgbToHex(Math.round(r / count), Math.round(g / count), Math.round(b / count));
+};
+
+const resolveBiomeStyle = (system: GalaxySystem) => {
+  const biome = system.biomeId ? BIOMES[system.biomeId] : undefined;
+  if (biome) {
+    return biomeToTileStyle(biome);
+  }
+  return {
+    fill: '#334155',
+    stroke: '#94a3b8',
+    accent: '#ffd166',
+    decals: undefined,
+  };
+};
+
+const buildLayout = (
+  systems: GalaxySystem[],
+  players: Player[],
+  alliances: Alliance[],
+  filteredSystemIds: Set<string>,
+  highlightedAllianceIds: Set<string>,
+): LayoutMetadata => {
+  if (systems.length === 0) {
+    return { entries: [], bounds: null };
   }
 
-  const [first, ...rest] = positioned;
-  const pixelBounds = rest.reduce(
+  const alliancesById = new Map(alliances.map((alliance) => [alliance.id, alliance]));
+
+  const rawEntries = systems.map((system) => {
+    const { x, y } = axialToPixel(system.axial, HEX_SIZE);
+    const ownerSummary = aggregateOwners(system, players, alliances);
+    const biomeStyle = resolveBiomeStyle(system);
+
+    const matchedAllianceIds = new Set<string>();
+    system.planets.forEach((planet) => {
+      if (planet.allianceId && highlightedAllianceIds.has(planet.allianceId)) {
+        matchedAllianceIds.add(planet.allianceId);
+      }
+    });
+
+    const matchedAlliances = Array.from(matchedAllianceIds)
+      .map((id) => alliancesById.get(id))
+      .filter((entry): entry is Alliance => Boolean(entry));
+
+    const highlightColor = matchedAlliances.length > 0 ? blendColors(matchedAlliances.map((entry) => entry.color)) : null;
+    const highlightedTags = matchedAlliances.map((entry) => entry.tag);
+
+    return {
+      system,
+      x,
+      y,
+      ownerSummary,
+      fill: biomeStyle.fill,
+      stroke: biomeStyle.stroke,
+      accent: biomeStyle.accent,
+      isFiltered: filteredSystemIds.has(system.id),
+      isHighlighted: highlightColor !== null,
+      highlightColor,
+      highlightedTags,
+    };
+  });
+
+  const initialBounds = rawEntries.reduce(
     (acc, entry) => ({
       minX: Math.min(acc.minX, entry.x),
       maxX: Math.max(acc.maxX, entry.x),
       minY: Math.min(acc.minY, entry.y),
       maxY: Math.max(acc.maxY, entry.y),
     }),
-    { minX: first.x, maxX: first.x, minY: first.y, maxY: first.y },
+    {
+      minX: rawEntries[0].x,
+      maxX: rawEntries[0].x,
+      minY: rawEntries[0].y,
+      maxY: rawEntries[0].y,
+    },
   );
-  const padding = HEX_SIZE * 2.5;
-  const width = pixelBounds.maxX - pixelBounds.minX + padding * 2;
-  const height = pixelBounds.maxY - pixelBounds.minY + padding * 2;
+
+  const width = initialBounds.maxX - initialBounds.minX + PADDING * 2;
+  const height = initialBounds.maxY - initialBounds.minY + PADDING * 2;
+
+  const entries: PositionedSystem[] = rawEntries.map((entry) => ({
+    system: entry.system,
+    translatedX: entry.x - initialBounds.minX + PADDING,
+    translatedY: entry.y - initialBounds.minY + PADDING,
+    ownerSummary: entry.ownerSummary,
+    fill: entry.highlightColor ?? entry.fill,
+    stroke: entry.highlightColor ?? entry.stroke,
+    accent: entry.accent,
+    isFiltered: entry.isFiltered,
+    isHighlighted: entry.isHighlighted,
+    highlightColor: entry.highlightColor,
+    highlightedTags: entry.highlightedTags,
+  }));
+
+  return {
+    entries,
+    bounds: { width, height },
+  };
+};
+
+/**
+ * Interaktive Hex-Karte der Galaxie mit Zoom-, Pan- und Highlight-Unterstützung.
+ */
+const HexMap: React.FC<HexMapProps> = ({
+  systems,
+  players,
+  alliances,
+  filteredSystemIds,
+  highlightedAllianceIds,
+  selectedSystemId,
+  onSelect,
+  zoom,
+  onZoomChange,
+}) => {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const dragStart = useRef<{ x: number; y: number } | null>(null);
+  const zoomRef = useRef(zoom);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  const highlightedSet = useMemo(() => new Set(highlightedAllianceIds), [highlightedAllianceIds]);
+
+  const layout = useMemo(
+    () => buildLayout(systems, players, alliances, filteredSystemIds, highlightedSet),
+    [alliances, filteredSystemIds, highlightedSet, players, systems],
+  );
+
+  const { entries, bounds } = layout;
+
+  useEffect(() => {
+    if (!bounds || entries.length === 0) {
+      return;
+    }
+
+    const fallback = entries.find((entry) => entry.isFiltered) ?? entries[0];
+    const target = selectedSystemId
+      ? entries.find((entry) => entry.system.id === selectedSystemId) ?? fallback
+      : fallback;
+    const currentZoom = zoomRef.current;
+    const centerX = bounds.width / 2 / currentZoom;
+    const centerY = bounds.height / 2 / currentZoom;
+    setOffset({ x: centerX - target.translatedX, y: centerY - target.translatedY });
+  }, [entries, bounds, selectedSystemId]);
 
   const handleWheel = (event: React.WheelEvent<SVGSVGElement>) => {
     event.preventDefault();
-    const delta = event.deltaY < 0 ? 0.1 : -0.1;
-    const next = Math.min(2.5, Math.max(0.6, zoom + delta));
-    onZoomChange(Number(next.toFixed(2)));
+    if (!bounds) {
+      return;
+    }
+    const next = zoom + (event.deltaY < 0 ? 0.15 : -0.15);
+    const clamped = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(next.toFixed(2))));
+    if (clamped === zoom) {
+      return;
+    }
+
+    const svgElement = svgRef.current;
+    if (svgElement) {
+      const rect = svgElement.getBoundingClientRect();
+      const cursorX = event.clientX - rect.left;
+      const cursorY = event.clientY - rect.top;
+      const worldX = cursorX / zoom - offset.x;
+      const worldY = cursorY / zoom - offset.y;
+      const newOffsetX = cursorX / clamped - worldX;
+      const newOffsetY = cursorY / clamped - worldY;
+      setOffset({ x: newOffsetX, y: newOffsetY });
+    }
+
+    onZoomChange(clamped);
   };
 
   const handleMouseDown = (event: React.MouseEvent<SVGSVGElement>) => {
@@ -129,8 +293,8 @@ const HexMap: React.FC<HexMapProps> = ({ systems, players, alliances, selectedSy
     if (!dragStart.current) {
       return;
     }
-    const dx = event.clientX - dragStart.current.x;
-    const dy = event.clientY - dragStart.current.y;
+    const dx = (event.clientX - dragStart.current.x) / zoom;
+    const dy = (event.clientY - dragStart.current.y) / zoom;
     dragStart.current = { x: event.clientX, y: event.clientY };
     setOffset((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
   };
@@ -139,11 +303,29 @@ const HexMap: React.FC<HexMapProps> = ({ systems, players, alliances, selectedSy
     dragStart.current = null;
   };
 
+  if (!bounds || entries.length === 0) {
+    const fallbackHeight = getHexHeight(HEX_SIZE) * 6;
+    const fallbackWidth = HEX_SIZE * 12;
+    return (
+      <div className="steampunk-glass steampunk-border rounded-lg p-4">
+        <svg viewBox={`0 0 ${fallbackWidth} ${fallbackHeight}`} className="h-[420px] w-full" role="presentation">
+          <title>Keine Systeme sichtbar</title>
+          <text x="50%" y="50%" textAnchor="middle" className="font-cinzel fill-yellow-200 text-[0.85rem]">
+            Keine Systeme sichtbar
+          </text>
+        </svg>
+      </div>
+    );
+  }
+
+  const viewHeight = Math.max(bounds.height, getHexHeight(HEX_SIZE) * 8);
+
   return (
     <div className="steampunk-glass steampunk-border rounded-lg p-4">
       <svg
-        viewBox={`0 0 ${width} ${Math.max(height, getHexHeight(HEX_SIZE) * 6)}`}
-        className="h-[420px] w-full"
+        ref={svgRef}
+        viewBox={`0 0 ${bounds.width} ${viewHeight}`}
+        className="h-[420px] w-full cursor-grab"
         role="presentation"
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
@@ -153,15 +335,32 @@ const HexMap: React.FC<HexMapProps> = ({ systems, players, alliances, selectedSy
       >
         <defs>
           <radialGradient id="hex-glow" cx="50%" cy="50%" r="60%">
-            <stop offset="0%" stopColor="rgba(255,255,255,0.22)" />
+            <stop offset="0%" stopColor="rgba(255,255,255,0.25)" />
             <stop offset="100%" stopColor="rgba(0,0,0,0)" />
           </radialGradient>
+          <radialGradient id="map-halo" cx="50%" cy="50%" r="75%">
+            <stop offset="0%" stopColor="rgba(14, 14, 28, 0.85)" />
+            <stop offset="100%" stopColor="rgba(4, 7, 16, 0.95)" />
+          </radialGradient>
+          <pattern id="starfield" width="28" height="28" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="4" r="0.8" fill="rgba(252,211,77,0.12)" />
+            <circle cx="14" cy="12" r="0.6" fill="rgba(252,211,77,0.07)" />
+            <circle cx="24" cy="22" r="0.7" fill="rgba(252,211,77,0.09)" />
+          </pattern>
         </defs>
-        <g transform={`translate(${offset.x}, ${offset.y}) scale(${zoom})`}>
-          {positioned.map(({ system, x, y, chips }) => {
-            const translatedX = x - bounds.minX + padding;
-            const translatedY = y - bounds.minY + padding;
-            const isSelected = selectedSystemId === system.id;
+        <rect width="100%" height="100%" fill="url(#map-halo)" rx="18" />
+        <rect width="100%" height="100%" fill="url(#starfield)" opacity="0.35" />
+        <g transform={`translate(${offset.x}, ${offset.y}) scale(${zoom})`} className="cursor-grab">
+          {entries.map(({ system, translatedX, translatedY, ownerSummary, fill, stroke, accent, isFiltered, isHighlighted, highlightColor, highlightedTags }) => {
+            const isSelected = system.id === selectedSystemId;
+            const polygonFillOpacity = isHighlighted ? 0.78 : isFiltered ? 0.6 : 0.18;
+            const polygonStrokeWidth = isSelected ? 4 : isHighlighted ? 3 : 1.5;
+            const strokeColor = isSelected ? '#facc15' : stroke;
+            const labelOpacity = isFiltered || isHighlighted ? 1 : 0.3;
+            const showChips = isFiltered || isHighlighted;
+            const highlightLabel = highlightColor ? highlightedTags.join(' vs ') : '';
+            const biomeName = system.biomeId ? BIOMES[system.biomeId]?.name ?? 'Unbekanntes Biom' : undefined;
+
             return (
               <g
                 key={system.id}
@@ -173,19 +372,50 @@ const HexMap: React.FC<HexMapProps> = ({ systems, players, alliances, selectedSy
               >
                 <polygon
                   points={buildHexPath(0, 0, HEX_SIZE)}
-                  fill="rgba(248, 181, 0, 0.12)"
-                  stroke={isSelected ? '#facc15' : 'rgba(140, 84, 18, 0.6)'}
-                  strokeWidth={isSelected ? 4 : 2}
+                  fill={fill}
+                  fillOpacity={polygonFillOpacity}
+                  stroke={strokeColor}
+                  strokeWidth={polygonStrokeWidth}
+                  style={{ transition: 'fill 180ms ease, stroke 180ms ease' }}
                 />
-                <polygon points={buildHexPath(0, 0, HEX_SIZE)} fill="url(#hex-glow)" opacity={isSelected ? 0.65 : 0.3} />
-                <text x={0} y={-HEX_SIZE * 0.1} textAnchor="middle" className="font-cinzel fill-yellow-200 text-[0.8rem]">
+                <polygon points={buildHexPath(0, 0, HEX_SIZE)} fill="url(#hex-glow)" opacity={isHighlighted ? 0.7 : 0.35} />
+                <text
+                  x={0}
+                  y={-HEX_SIZE * 0.1}
+                  textAnchor="middle"
+                  className="font-cinzel text-[0.75rem]"
+                  fill={accent}
+                  opacity={labelOpacity}
+                >
                   {formatSystemCoordinate(system)}
                 </text>
-                <foreignObject x={-HEX_SIZE} y={HEX_SIZE * 0.2} width={HEX_SIZE * 2} height={42} pointerEvents="none">
-                  <div className="flex justify-center">
-                    <OwnerChips owners={chips.owners} extraCount={chips.extraCount} />
-                  </div>
-                </foreignObject>
+                {biomeName && (
+                  <text
+                    x={0}
+                    y={HEX_SIZE * 0.15}
+                    textAnchor="middle"
+                    className="font-sans text-[0.55rem] uppercase tracking-wide"
+                    fill="rgba(255,255,255,0.6)"
+                    opacity={labelOpacity}
+                  >
+                    {biomeName}
+                  </text>
+                )}
+                {showChips && (
+                  <foreignObject x={-HEX_SIZE} y={HEX_SIZE * 0.2} width={HEX_SIZE * 2} height={52} pointerEvents="none">
+                    <div className="flex flex-col items-center gap-1">
+                      <OwnerChips owners={ownerSummary.owners} extraCount={ownerSummary.extraCount} />
+                      {highlightColor && highlightLabel && (
+                        <div
+                          className="rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wider text-black"
+                          style={{ backgroundColor: highlightColor }}
+                        >
+                          {highlightLabel}
+                        </div>
+                      )}
+                    </div>
+                  </foreignObject>
+                )}
               </g>
             );
           })}

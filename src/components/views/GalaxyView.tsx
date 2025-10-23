@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BIOME_STYLES } from '@/constants';
 import { Alliance, GalaxyPlanet, GalaxySystem, MissionType, PlanetBiome, Player } from '@/types';
 import { useDirectoryStore } from '@/store/directoryStore';
@@ -12,8 +12,13 @@ import OwnerChips, { OwnerChipEntry } from '@/components/galaxy/OwnerChips';
 import ChatSidebar from '@/components/messaging/ChatSidebar';
 import { FOCUS_OUTLINE } from '@/styles/tokens';
 import { useMissionStore } from '@/store/missionStore';
+import { ALL_BIOMES, BIOMES } from '@/constants/biomes';
 
 const ROW_HEIGHT = 76;
+const MIN_ZOOM = 0.35;
+const MAX_ZOOM = 3.5;
+const ZOOM_STEP = 0.2;
+const SECTOR_CHUNK_SIZE = 12;
 
 interface TableRow {
   id: string;
@@ -23,6 +28,9 @@ interface TableRow {
   owners: OwnerChipEntry[];
   extraOwnerCount: number;
   systemIndex: number;
+  biomeId?: string;
+  biomeName?: string;
+  biomeAccent?: string;
 }
 
 const buildOwnerSummary = (
@@ -76,7 +84,9 @@ const GalaxyView: React.FC = () => {
   const [biomeFilter, setBiomeFilter] = useState<PlanetBiome | 'all'>('all');
   const [selectedSystemId, setSelectedSystemId] = useState<string | null>(null);
   const [modalSystemId, setModalSystemId] = useState<string | null>(null);
-  const [zoom, setZoom] = useState(1.1);
+  const [zoom, setZoom] = useState(0.9);
+  const [selectedAllianceIds, setSelectedAllianceIds] = useState<string[]>([]);
+  const sectorInitRef = useRef(false);
 
   const selectedSystem = useMemo(
     () => systems.find((system) => system.id === selectedSystemId) ?? null,
@@ -114,18 +124,142 @@ const GalaxyView: React.FC = () => {
     window.history.replaceState(null, '', `?${params.toString()}`);
   }, [selectedSystem]);
 
-  const biomeOptions = useMemo(() => Object.entries(BIOME_STYLES) as [PlanetBiome, { label: string; fill: string; stroke: string }][], []);
+  const biomeOptions = useMemo(
+    () => Object.entries(BIOME_STYLES) as [PlanetBiome, { label: string; fill: string; stroke: string }][],
+    [],
+  );
+
+  const allianceMap = useMemo(() => {
+    const entries = new Map<string, Alliance>();
+    alliances.forEach((alliance) => entries.set(alliance.id, alliance));
+    return entries;
+  }, [alliances]);
+
+  const selectedAllianceSet = useMemo(() => new Set(selectedAllianceIds), [selectedAllianceIds]);
+
+  const sectorBounds = useMemo(() => {
+    if (systems.length === 0) {
+      return null;
+    }
+    return systems.reduce(
+      (acc, system) => ({
+        minQ: Math.min(acc.minQ, system.sectorQ),
+        maxQ: Math.max(acc.maxQ, system.sectorQ),
+        minR: Math.min(acc.minR, system.sectorR),
+        maxR: Math.max(acc.maxR, system.sectorR),
+      }),
+      {
+        minQ: systems[0].sectorQ,
+        maxQ: systems[0].sectorQ,
+        minR: systems[0].sectorR,
+        maxR: systems[0].sectorR,
+      },
+    );
+  }, [systems]);
+
+  const chunkCounts = useMemo(() => {
+    if (!sectorBounds) {
+      return { q: 1, r: 1 };
+    }
+    const width = sectorBounds.maxQ - sectorBounds.minQ + 1;
+    const height = sectorBounds.maxR - sectorBounds.minR + 1;
+    return {
+      q: Math.max(1, Math.ceil(width / SECTOR_CHUNK_SIZE)),
+      r: Math.max(1, Math.ceil(height / SECTOR_CHUNK_SIZE)),
+    };
+  }, [sectorBounds]);
+
+  const [sectorChunk, setSectorChunk] = useState({ qIndex: 0, rIndex: 0 });
+
+  useEffect(() => {
+    if (!sectorBounds || sectorInitRef.current) {
+      return;
+    }
+    sectorInitRef.current = true;
+    const defaultChunk = {
+      qIndex: Math.min(chunkCounts.q - 1, Math.max(0, Math.floor((chunkCounts.q - 1) / 2))),
+      rIndex: Math.min(chunkCounts.r - 1, Math.max(0, Math.floor((chunkCounts.r - 1) / 2))),
+    };
+    setSectorChunk(defaultChunk);
+  }, [chunkCounts, sectorBounds]);
+
+  const activeSectorRange = useMemo(() => {
+    if (!sectorBounds) {
+      return null;
+    }
+    const qStart = sectorBounds.minQ + sectorChunk.qIndex * SECTOR_CHUNK_SIZE;
+    const rStart = sectorBounds.minR + sectorChunk.rIndex * SECTOR_CHUNK_SIZE;
+    return {
+      qMin: qStart,
+      qMax: Math.min(sectorBounds.maxQ, qStart + SECTOR_CHUNK_SIZE - 1),
+      rMin: rStart,
+      rMax: Math.min(sectorBounds.maxR, rStart + SECTOR_CHUNK_SIZE - 1),
+    };
+  }, [sectorBounds, sectorChunk]);
+
+  const sectorChunkOptionsQ = useMemo(() => {
+    if (!sectorBounds) {
+      return [{ value: 0, label: 'Q 0-0' }];
+    }
+    return Array.from({ length: chunkCounts.q }, (_, index) => {
+      const start = sectorBounds.minQ + index * SECTOR_CHUNK_SIZE;
+      const end = Math.min(sectorBounds.maxQ, start + SECTOR_CHUNK_SIZE - 1);
+      return { value: index, label: `Q ${start}-${end}` };
+    });
+  }, [chunkCounts, sectorBounds]);
+
+  const sectorChunkOptionsR = useMemo(() => {
+    if (!sectorBounds) {
+      return [{ value: 0, label: 'R 0-0' }];
+    }
+    return Array.from({ length: chunkCounts.r }, (_, index) => {
+      const start = sectorBounds.minR + index * SECTOR_CHUNK_SIZE;
+      const end = Math.min(sectorBounds.maxR, start + SECTOR_CHUNK_SIZE - 1);
+      return { value: index, label: `R ${start}-${end}` };
+    });
+  }, [chunkCounts, sectorBounds]);
+
+  const sectorFilteredSystems = useMemo(() => {
+    if (!activeSectorRange) {
+      return systems;
+    }
+    return systems.filter(
+      (system) =>
+        system.sectorQ >= activeSectorRange.qMin &&
+        system.sectorQ <= activeSectorRange.qMax &&
+        system.sectorR >= activeSectorRange.rMin &&
+        system.sectorR <= activeSectorRange.rMax,
+    );
+  }, [activeSectorRange, systems]);
+
+  const prominentAlliances = useMemo(() => {
+    const sorted = [...alliances].sort((a, b) => b.members.length - a.members.length);
+    const base = sorted.slice(0, 12);
+    const selectedExtras = selectedAllianceIds
+      .map((id) => allianceMap.get(id))
+      .filter((entry): entry is Alliance => Boolean(entry));
+    const merged: Alliance[] = [...base];
+    selectedExtras.forEach((entry) => {
+      if (!merged.some((item) => item.id === entry.id)) {
+        merged.push(entry);
+      }
+    });
+    return merged;
+  }, [alliances, allianceMap, selectedAllianceIds]);
 
   const tableRows = useMemo<TableRow[]>(() => {
     const term = searchTerm.trim().toLowerCase();
-    return systems
+    return sectorFilteredSystems
       .map((system, index) => {
         const coordinate = formatSystemCoordinate(system);
         const freeSlots = system.planets.filter((planet) => !planet.ownerId).length;
         const ownerSummary = buildOwnerSummary(system.id, system.planets, players, alliances);
+        const systemBiome = system.biomeId ? BIOMES[system.biomeId] : undefined;
         const haystack = [
           coordinate,
           system.displayName,
+          system.biomeId ?? '',
+          systemBiome?.name?.toLowerCase() ?? '',
           ...system.planets.map((planet) => planet.name.toLowerCase()),
           ...system.planets.map((planet) => {
             const player = players.find((entry) => entry.id === planet.ownerId);
@@ -144,8 +278,11 @@ const GalaxyView: React.FC = () => {
           biomeFilter === 'all' || system.planets.some((planet) => planet.biome === biomeFilter);
         const passesMine = !onlyMine || system.planets.some((planet) => planet.ownerId === currentPlayerId);
         const passesFree = !onlyFree || freeSlots > 0;
+        const passesAlliance =
+          selectedAllianceSet.size === 0 ||
+          system.planets.some((planet) => planet.allianceId && selectedAllianceSet.has(planet.allianceId));
 
-        if (!(passesSearch && passesBiome && passesMine && passesFree)) {
+        if (!(passesSearch && passesBiome && passesMine && passesFree && passesAlliance)) {
           return null;
         }
 
@@ -157,19 +294,68 @@ const GalaxyView: React.FC = () => {
           owners: ownerSummary.owners,
           extraOwnerCount: ownerSummary.extra,
           systemIndex: index,
+          biomeId: system.biomeId,
+          biomeName: systemBiome?.name,
+          biomeAccent: systemBiome?.palette.accent,
         };
       })
       .filter((entry): entry is TableRow => Boolean(entry));
-  }, [alliances, biomeFilter, currentPlayerId, onlyFree, onlyMine, players, searchTerm, systems]);
+  }, [
+    alliances,
+    biomeFilter,
+    currentPlayerId,
+    onlyFree,
+    onlyMine,
+    players,
+    searchTerm,
+    sectorFilteredSystems,
+    selectedAllianceSet,
+  ]);
 
   const selectedIndex = tableRows.findIndex((row) => row.id === selectedSystemId);
+  const filteredSystemIds = useMemo(() => new Set(tableRows.map((row) => row.id)), [tableRows]);
+
+  const focusChunkForSystem = useCallback(
+    (system: GalaxySystem | null) => {
+      if (!system || !sectorBounds) {
+        return;
+      }
+      const qIndex = Math.min(
+        chunkCounts.q - 1,
+        Math.max(0, Math.floor((system.sectorQ - sectorBounds.minQ) / SECTOR_CHUNK_SIZE)),
+      );
+      const rIndex = Math.min(
+        chunkCounts.r - 1,
+        Math.max(0, Math.floor((system.sectorR - sectorBounds.minR) / SECTOR_CHUNK_SIZE)),
+      );
+      setSectorChunk((prev) => {
+        if (prev.qIndex === qIndex && prev.rIndex === rIndex) {
+          return prev;
+        }
+        return { qIndex, rIndex };
+      });
+    },
+    [chunkCounts, sectorBounds],
+  );
+
+  useEffect(() => {
+    if (selectedSystem) {
+      focusChunkForSystem(selectedSystem);
+    }
+  }, [focusChunkForSystem, selectedSystem]);
 
   const handleRowSelect = (row: TableRow) => {
+    const system = systems.find((entry) => entry.id === row.id);
+    if (system) {
+      focusChunkForSystem(system);
+    }
     setSelectedSystemId(row.id);
     setModalSystemId(row.id);
+    setZoom((value) => (value < 1.4 ? 1.4 : value));
   };
 
   const handleMapSelect = (system: GalaxySystem) => {
+    focusChunkForSystem(system);
     setSelectedSystemId(system.id);
     setModalSystemId(system.id);
   };
@@ -179,9 +365,22 @@ const GalaxyView: React.FC = () => {
   const getPlayerName = (playerId?: string) => players.find((player) => player.id === playerId)?.name ?? 'Frei';
   const getAllianceTag = (allianceId?: string) => alliances.find((alliance) => alliance.id === allianceId)?.tag;
 
-  const legendBiomes = biomeOptions.map(([id, style]) => ({ id, label: style.label, fill: style.fill }));
+  const legendBiomes = useMemo(
+    () => ALL_BIOMES.map((biome) => ({ id: biome.id, label: biome.name, fill: biome.palette.base })),
+    [],
+  );
   const legendAlliances = alliances.map((alliance) => ({ id: alliance.id, tag: alliance.tag, color: alliance.color }));
   const shareCoordinate = (coordinate: string) => navigator.clipboard?.writeText(coordinate).catch(() => undefined);
+
+  const toggleAllianceHighlight = (allianceId: string) => {
+    setSelectedAllianceIds((current) =>
+      current.includes(allianceId) ? current.filter((id) => id !== allianceId) : [...current, allianceId],
+    );
+  };
+
+  const clearAllianceHighlights = () => {
+    setSelectedAllianceIds([]);
+  };
 
   const handlePlanMission = (planetId: string, type: MissionType) => {
     const planet = selectedSystem?.planets.find((entry) => entry.id === planetId);
@@ -242,10 +441,91 @@ const GalaxyView: React.FC = () => {
                   ))}
                 </select>
               </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs text-gray-300">
+                <label className="inline-flex items-center gap-2">
+                  <span>Region Q</span>
+                  <select
+                    value={sectorChunk.qIndex}
+                    onChange={(event) =>
+                      setSectorChunk((prev) => ({
+                        ...prev,
+                        qIndex: Number.parseInt(event.target.value, 10),
+                      }))
+                    }
+                    className={`rounded-md border border-yellow-800/40 bg-black/40 px-2 py-1 ${FOCUS_OUTLINE.className}`}
+                  >
+                    {sectorChunkOptionsQ.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="inline-flex items-center gap-2">
+                  <span>Region R</span>
+                  <select
+                    value={sectorChunk.rIndex}
+                    onChange={(event) =>
+                      setSectorChunk((prev) => ({
+                        ...prev,
+                        rIndex: Number.parseInt(event.target.value, 10),
+                      }))
+                    }
+                    className={`rounded-md border border-yellow-800/40 bg-black/40 px-2 py-1 ${FOCUS_OUTLINE.className}`}
+                  >
+                    {sectorChunkOptionsR.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {activeSectorRange && (
+                  <span className="rounded-md bg-black/40 px-2 py-1 text-xs text-yellow-200">
+                    Q {activeSectorRange.qMin}-{activeSectorRange.qMax} | R {activeSectorRange.rMin}-{activeSectorRange.rMax}
+                  </span>
+                )}
+              </div>
             </div>
             <p className="mt-2 text-xs text-gray-500">
-              {tableRows.length} von {systems.length} Systemen sichtbar
+              {tableRows.length} von {sectorFilteredSystems.length} Systemen im aktuellen Ausschnitt
             </p>
+            <div className="mt-4 space-y-2">
+              <p className="text-xs uppercase tracking-wide text-yellow-400">Allianzen hervorheben</p>
+              <div className="flex flex-wrap gap-2">
+                {prominentAlliances.map((alliance) => {
+                  const isActive = selectedAllianceIds.includes(alliance.id);
+                  return (
+                    <button
+                      key={alliance.id}
+                      type="button"
+                      onClick={() => toggleAllianceHighlight(alliance.id)}
+                      className={`rounded-full border px-3 py-1 text-xs font-semibold transition-colors ${
+                        isActive
+                          ? 'border-yellow-300 bg-yellow-500/20 text-yellow-100'
+                          : 'border-yellow-800/40 bg-black/40 text-gray-300 hover:text-yellow-100'
+                      }`}
+                      style={
+                        isActive
+                          ? { boxShadow: `0 0 0 2px ${alliance.color}`, borderColor: alliance.color }
+                          : { borderColor: alliance.color }
+                      }
+                    >
+                      {alliance.tag}
+                    </button>
+                  );
+                })}
+                {selectedAllianceIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearAllianceHighlights}
+                    className="rounded-full border border-yellow-800/40 bg-black/40 px-3 py-1 text-xs text-gray-300 hover:text-yellow-100"
+                  >
+                    Zuruecksetzen
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
           <div className="rounded-2xl border border-yellow-800/30 bg-black/45 p-2 shadow-xl">
             <VirtualList
@@ -268,7 +548,21 @@ const GalaxyView: React.FC = () => {
                   >
                     <div>
                       <p className="font-cinzel text-yellow-200">{row.coordinate}</p>
-                      <p className="text-xs text-gray-400">{row.systemName}</p>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs">
+                        <span className="text-gray-400">{row.systemName}</span>
+                        {row.biomeName && (
+                          <span
+                            className="rounded-full border px-2 py-0.5 uppercase tracking-wide"
+                            style={{
+                              borderColor: row.biomeAccent ?? 'rgba(234,179,8,0.6)',
+                              color: row.biomeAccent ?? '#facc15',
+                              backgroundColor: 'rgba(0,0,0,0.35)',
+                            }}
+                          >
+                            {row.biomeName}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-center gap-4">
                       <OwnerChips owners={row.owners} extraCount={row.extraOwnerCount} />
@@ -284,26 +578,32 @@ const GalaxyView: React.FC = () => {
         <div className="space-y-4">
           <div className="relative">
             <HexMap
-              systems={systems}
+              systems={sectorFilteredSystems}
               players={players}
               alliances={alliances}
               selectedSystemId={selectedSystemId}
               onSelect={handleMapSelect}
               zoom={zoom}
               onZoomChange={setZoom}
+              filteredSystemIds={filteredSystemIds}
+              highlightedAllianceIds={selectedAllianceIds}
             />
             <div className="pointer-events-none absolute inset-0 flex items-end justify-end p-4">
               <div className="pointer-events-auto inline-flex flex-col gap-2 rounded-xl border border-yellow-800/30 bg-black/60 p-2 shadow-lg">
                 <button
                   type="button"
-                  onClick={() => setZoom((value) => Math.min(2.5, Number((value + 0.2).toFixed(2))))}
+                  onClick={() =>
+                    setZoom((value) => Math.min(MAX_ZOOM, Number((value + ZOOM_STEP).toFixed(2))))
+                  }
                   className={`rounded-md border border-yellow-800/40 px-2 py-1 text-sm text-yellow-100 ${FOCUS_OUTLINE.className}`}
                 >
                   +
                 </button>
                 <button
                   type="button"
-                  onClick={() => setZoom((value) => Math.max(0.6, Number((value - 0.2).toFixed(2))))}
+                  onClick={() =>
+                    setZoom((value) => Math.max(MIN_ZOOM, Number((value - ZOOM_STEP).toFixed(2))))
+                  }
                   className={`rounded-md border border-yellow-800/40 px-2 py-1 text-sm text-yellow-100 ${FOCUS_OUTLINE.className}`}
                 >
                   −

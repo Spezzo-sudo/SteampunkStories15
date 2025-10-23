@@ -34,6 +34,17 @@ Ein Vite + React Prototyp für die Steampunk-Raiders Verwaltungssimulation.
    npm run test
    ```
 
+### Schnellstart-Skript f�r VS Code
+
+Im integrierten VS Code Terminal gen�gt:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start-game.ps1
+```
+
+- Installiert fehlende Abhängigkeiten automatisch (abschaltbar mit `-SkipInstall`).
+- Startet den Vite-Dev-Server mit geöffnetem Browser-Tab auf `http://localhost:5173/`.
+
 ## Projektstruktur
 
 ```
