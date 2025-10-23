@@ -1,0 +1,14 @@
+*.log
+*.tmp
+.DS_Store
+.cache/
+.env
+.env.*
+.idea/
+.parcel-cache/
+.vite/
+.vscode/
+build/
+coverage/
+dist/
+node_modules/
