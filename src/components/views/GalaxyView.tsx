@@ -40,6 +40,16 @@ type SectorRange = {
   rMax: number;
 };
 
+type SectorBounds = {
+  minQ: number;
+  maxQ: number;
+  minR: number;
+  maxR: number;
+};
+
+type LegendBiomeEntry = React.ComponentProps<typeof GalaxyLegend>['biomes'][number];
+type LegendAllianceEntry = React.ComponentProps<typeof GalaxyLegend>['alliances'][number];
+
 interface MapOverlayProps {
   onClose: () => void;
   systems: GalaxySystem[];
@@ -264,18 +274,6 @@ const MapOverlay: React.FC<MapOverlayProps> = ({
   );
 };
 
-export default GalaxyView;
-
-type SectorBounds = {
-  minQ: number;
-  maxQ: number;
-  minR: number;
-  maxR: number;
-};
-
-type LegendBiomeEntry = React.ComponentProps<typeof GalaxyLegend>['biomes'][number];
-type LegendAllianceEntry = React.ComponentProps<typeof GalaxyLegend>['alliances'][number];
-
 const buildOwnerSummary = (
   systemId: string,
   planets: GalaxyPlanet[],
@@ -311,7 +309,7 @@ const buildOwnerSummary = (
 /**
  * Galaxy v3 view combining virtualised table, large map and lightweight communication tools.
  */
-const GalaxyView: React.FC = () => {
+export default function GalaxyView(): JSX.Element {
   const systems = useDirectoryStore((state) => state.systems);
   const players = useDirectoryStore((state) => state.players);
   const currentPlayerId = useDirectoryStore((state) => state.currentPlayerId);
@@ -979,4 +977,4 @@ const GalaxyView: React.FC = () => {
       )}
     </section>
   );
-};
+}

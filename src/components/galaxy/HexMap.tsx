@@ -3,8 +3,10 @@ import { Alliance, GalaxySystem, Player } from '@/types';
 import { BIOMES } from '@/constants/biomes';
 import { biomeToTileStyle } from '@/lib/hexRender';
 import type { TileStyle } from '@/lib/hexRender';
-import { axialToPixel, buildHexPath, describeCoordinate, formatSystemCoordinate, getHexHeight } from '@/lib/hex';
-import OwnerChips from '@/components/galaxy/OwnerChips';
+import { axialToPixel, describeCoordinate, formatSystemCoordinate, getHexHeight } from '@/lib/hex';
+import HexTile from '@/components/galaxy/tiles/HexTile';
+import { createTileTheme, type TileTheme } from '@/lib/hexTheme';
+import { hexToRgb, rgbToHex } from '@/lib/color';
 
 interface HexMapProps {
   systems: GalaxySystem[];
@@ -26,15 +28,14 @@ interface OwnerSummary {
 
 interface PositionedSystem {
   system: GalaxySystem;
-  translatedX: number;
-  translatedY: number;
+  position: { x: number; y: number };
   ownerSummary: OwnerSummary;
-  tileStyle: TileStyle;
-  fillId: string;
-  isFiltered: boolean;
+  tileTheme: TileTheme;
+  matchesFilter: boolean;
   isHighlighted: boolean;
   highlightColor: string | null;
-  highlightedTags: string[];
+  highlightTags: string[];
+  biomeName?: string;
 }
 
 interface LayoutMetadata {
@@ -79,26 +80,7 @@ const aggregateOwners = (system: GalaxySystem, players: Player[], alliances: All
   };
 };
 
-const clampComponent = (value: number) => Math.max(0, Math.min(255, value));
-
-const hexToRgb = (hex: string) => {
-  const normalized = hex.replace('#', '');
-  if (normalized.length !== 6) {
-    return { r: 255, g: 202, b: 105 };
-  }
-  return {
-    r: parseInt(normalized.slice(0, 2), 16),
-    g: parseInt(normalized.slice(2, 4), 16),
-    b: parseInt(normalized.slice(4, 6), 16),
-  };
-};
-
-const rgbToHex = (r: number, g: number, b: number) =>
-  `#${clampComponent(r).toString(16).padStart(2, '0')}${clampComponent(g)
-    .toString(16)
-    .padStart(2, '0')}${clampComponent(b).toString(16).padStart(2, '0')}`;
-
-const blendColors = (colors: string[]): string => {
+const averageHexColors = (colors: string[]): string => {
   if (colors.length === 0) {
     return '#facc15';
   }
@@ -113,19 +95,28 @@ const blendColors = (colors: string[]): string => {
       { r: 0, g: 0, b: 0 },
     );
   const count = colors.length;
-  return rgbToHex(Math.round(r / count), Math.round(g / count), Math.round(b / count));
+  return rgbToHex({
+    r: Math.round(r / count),
+    g: Math.round(g / count),
+    b: Math.round(b / count),
+  });
 };
 
-const resolveBiomeStyle = (system: GalaxySystem): TileStyle => {
+const resolveBiomeVisuals = (
+  system: GalaxySystem,
+): { theme: TileTheme; biomeName?: string } => {
   const biome = system.biomeId ? BIOMES[system.biomeId] : undefined;
-  if (biome) {
-    return biomeToTileStyle(biome);
-  }
+  const style: TileStyle = biome
+    ? biomeToTileStyle(biome)
+    : {
+        fill: '#334155',
+        stroke: '#94a3b8',
+        accent: '#ffd166',
+        decals: undefined,
+      };
   return {
-    fill: '#334155',
-    stroke: '#94a3b8',
-    accent: '#ffd166',
-    decals: undefined,
+    theme: createTileTheme(style),
+    biomeName: biome?.name,
   };
 };
 
@@ -145,9 +136,7 @@ const buildLayout = (
   const rawEntries = systems.map((system) => {
     const { x, y } = axialToPixel(system.axial, HEX_SIZE);
     const ownerSummary = aggregateOwners(system, players, alliances);
-    const tileStyle = resolveBiomeStyle(system);
-    const fillId = system.biomeId ? `biome-${system.biomeId}` : 'biome-unknown';
-
+    const { theme, biomeName } = resolveBiomeVisuals(system);
     const matchedAllianceIds = new Set<string>();
     system.planets.forEach((planet) => {
       if (planet.allianceId && highlightedAllianceIds.has(planet.allianceId)) {
@@ -159,20 +148,20 @@ const buildLayout = (
       .map((id) => alliancesById.get(id))
       .filter((entry): entry is Alliance => Boolean(entry));
 
-    const highlightColor = matchedAlliances.length > 0 ? blendColors(matchedAlliances.map((entry) => entry.color)) : null;
-    const highlightedTags = matchedAlliances.map((entry) => entry.tag);
+    const highlightColor =
+      matchedAlliances.length > 0 ? averageHexColors(matchedAlliances.map((entry) => entry.color)) : null;
+    const highlightTags = matchedAlliances.map((entry) => entry.tag);
 
     return {
       system,
       x,
       y,
       ownerSummary,
-      tileStyle,
-      fillId,
-      isFiltered: filteredSystemIds.has(system.id),
-      isHighlighted: highlightColor !== null,
+      tileTheme: theme,
+      biomeName,
+      matchesFilter: filteredSystemIds.has(system.id),
       highlightColor,
-      highlightedTags,
+      highlightTags,
     };
   });
 
@@ -196,15 +185,17 @@ const buildLayout = (
 
   const entries: PositionedSystem[] = rawEntries.map((entry) => ({
     system: entry.system,
-    translatedX: entry.x - initialBounds.minX + PADDING,
-    translatedY: entry.y - initialBounds.minY + PADDING,
+    position: {
+      x: entry.x - initialBounds.minX + PADDING,
+      y: entry.y - initialBounds.minY + PADDING,
+    },
     ownerSummary: entry.ownerSummary,
-    tileStyle: entry.tileStyle,
-    fillId: entry.fillId,
-    isFiltered: entry.isFiltered,
-    isHighlighted: entry.isHighlighted,
+    tileTheme: entry.tileTheme,
+    matchesFilter: entry.matchesFilter,
+    isHighlighted: entry.highlightColor !== null,
     highlightColor: entry.highlightColor,
-    highlightedTags: entry.highlightedTags,
+    highlightTags: entry.highlightTags,
+    biomeName: entry.biomeName,
   }));
 
   return {
@@ -245,29 +236,20 @@ const HexMap: React.FC<HexMapProps> = ({
   );
 
   const { entries, bounds } = layout;
-  const gradientStyles = useMemo(() => {
-    const map = new Map<string, TileStyle>();
-    entries.forEach(({ fillId, tileStyle }) => {
-      if (!map.has(fillId)) {
-        map.set(fillId, tileStyle);
-      }
-    });
-    return map;
-  }, [entries]);
 
   useEffect(() => {
     if (!bounds || entries.length === 0) {
       return;
     }
 
-    const fallback = entries.find((entry) => entry.isFiltered) ?? entries[0];
+    const fallback = entries.find((entry) => entry.matchesFilter) ?? entries[0];
     const target = selectedSystemId
       ? entries.find((entry) => entry.system.id === selectedSystemId) ?? fallback
       : fallback;
     const currentZoom = zoomRef.current;
     const centerX = bounds.width / 2 / currentZoom;
-    const centerY = bounds.height / 2 / currentZoom;
-    setOffset({ x: centerX - target.translatedX, y: centerY - target.translatedY });
+    const centerY = (Math.max(bounds.height, getHexHeight(HEX_SIZE) * 8)) / 2 / currentZoom;
+    setOffset({ x: centerX - target.position.x, y: centerY - target.position.y });
   }, [entries, bounds, selectedSystemId]);
 
   const handleWheel = (event: React.WheelEvent<SVGSVGElement>) => {
@@ -314,6 +296,24 @@ const HexMap: React.FC<HexMapProps> = ({
     dragStart.current = null;
   };
 
+  const viewHeight = bounds ? Math.max(bounds.height, getHexHeight(HEX_SIZE) * 8) : getHexHeight(HEX_SIZE) * 8;
+
+  const visibleEntries = useMemo(() => {
+    if (!bounds) {
+      return [];
+    }
+    const padding = HEX_SIZE * 6;
+    const worldWidth = bounds.width / zoom;
+    const worldHeight = viewHeight / zoom;
+    const minX = -offset.x - padding;
+    const maxX = minX + worldWidth + padding * 2;
+    const minY = -offset.y - padding;
+    const maxY = minY + worldHeight + padding * 2;
+    return entries.filter(
+      ({ position }) => position.x >= minX && position.x <= maxX && position.y >= minY && position.y <= maxY,
+    );
+  }, [bounds, entries, offset.x, offset.y, viewHeight, zoom]);
+
   if (!bounds || entries.length === 0) {
     const fallbackHeight = getHexHeight(HEX_SIZE) * 6;
     const fallbackWidth = HEX_SIZE * 12;
@@ -328,8 +328,6 @@ const HexMap: React.FC<HexMapProps> = ({
       </div>
     );
   }
-
-  const viewHeight = Math.max(bounds.height, getHexHeight(HEX_SIZE) * 8);
 
   return (
     <div className="steampunk-glass steampunk-border rounded-lg p-4">
@@ -362,88 +360,59 @@ const HexMap: React.FC<HexMapProps> = ({
           <pattern id="hex-minor-grid" width="60" height="52" patternUnits="userSpaceOnUse">
             <path d="M0 26 L15 0 L45 0 L60 26 L45 52 L15 52 Z" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
           </pattern>
-          {Array.from(gradientStyles.entries()).map(([id, style]) => (
-            <radialGradient key={id} id={id} cx="50%" cy="45%" r="70%">
-              <stop offset="0%" stopColor={style.accent} stopOpacity={0.95} />
-              <stop offset="65%" stopColor={style.fill} stopOpacity={0.85} />
-              <stop offset="100%" stopColor={style.fill} stopOpacity={0.65} />
-            </radialGradient>
-          ))}
         </defs>
         <rect width="100%" height="100%" fill="url(#map-halo)" rx="18" />
         <rect width="100%" height="100%" fill="url(#starfield)" opacity="0.35" />
         <rect width="100%" height="100%" fill="url(#hex-minor-grid)" opacity="0.28" />
         <g transform={`translate(${offset.x}, ${offset.y}) scale(${zoom})`} className="cursor-grab">
-          {entries.map(({ system, translatedX, translatedY, ownerSummary, tileStyle, fillId, isFiltered, isHighlighted, highlightColor, highlightedTags }) => {
+          {visibleEntries.map((entry) => {
+            const {
+              system,
+              position,
+              ownerSummary,
+              tileTheme,
+              matchesFilter,
+              isHighlighted,
+              highlightColor,
+              highlightTags,
+              biomeName,
+            } = entry;
             const isSelected = system.id === selectedSystemId;
-            const polygonFillOpacity = isHighlighted ? 0.82 : isFiltered ? 0.65 : 0.4;
-            const polygonStrokeWidth = isSelected ? 4 : isHighlighted ? 3 : 1.5;
-            const baseStroke = tileStyle.stroke;
-            const baseFill = `url(#${fillId})`;
-            const strokeColor = isSelected ? '#facc15' : isHighlighted && highlightColor ? highlightColor : baseStroke;
-            const fillValue = isHighlighted && highlightColor ? highlightColor : baseFill;
-            const labelOpacity = isFiltered || isHighlighted ? 1 : 0.55;
-            const labelColor = isHighlighted && highlightColor ? highlightColor : tileStyle.accent;
-            const showChips = isFiltered || isHighlighted;
-            const highlightLabel = highlightColor ? highlightedTags.join(' vs ') : '';
-            const biomeName = system.biomeId ? BIOMES[system.biomeId]?.name ?? 'Unbekanntes Biom' : undefined;
+            const dimmed = !matchesFilter && !isHighlighted && !isSelected;
+            const ownersVisible = matchesFilter || isHighlighted;
+            const highlightLabel =
+              isHighlighted && highlightTags.length > 0 ? highlightTags.join(' vs ') : undefined;
+
+            const handleKeyDown = (event: React.KeyboardEvent<SVGGElement>) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onSelect(system);
+              }
+            };
 
             return (
-              <g
+              <HexTile
                 key={system.id}
-                transform={`translate(${translatedX}, ${translatedY})`}
+                position={position}
+                size={HEX_SIZE}
+                theme={tileTheme}
+                zoom={zoom}
+                selected={isSelected}
+                highlighted={isHighlighted}
+                highlightColor={highlightColor}
+                dimmed={dimmed}
+                coordinateLabel={formatSystemCoordinate(system)}
+                secondaryLabel={biomeName}
+                highlightLabel={highlightLabel}
+                owners={ownersVisible ? ownerSummary.owners : undefined}
+                extraOwnerCount={ownersVisible ? ownerSummary.extraCount : 0}
                 onClick={() => onSelect(system)}
-                className="cursor-pointer focus:outline-none"
+                onKeyDown={handleKeyDown}
                 tabIndex={0}
+                role="button"
+                className="cursor-pointer focus:outline-none"
                 aria-label={describeCoordinate(system)}
-              >
-                <polygon
-                  points={buildHexPath(0, 0, HEX_SIZE)}
-                  fill={fillValue}
-                  fillOpacity={polygonFillOpacity}
-                  stroke={strokeColor}
-                  strokeWidth={polygonStrokeWidth}
-                  style={{ transition: 'fill 180ms ease, stroke 180ms ease' }}
-                />
-                <polygon points={buildHexPath(0, 0, HEX_SIZE)} fill="url(#hex-glow)" opacity={isHighlighted ? 0.7 : 0.35} />
-                <text
-                  x={0}
-                  y={-HEX_SIZE * 0.1}
-                  textAnchor="middle"
-                  className="font-cinzel text-[0.75rem]"
-                  fill={labelColor}
-                  opacity={labelOpacity}
-                >
-                  {formatSystemCoordinate(system)}
-                </text>
-                {biomeName && (
-                  <text
-                    x={0}
-                    y={HEX_SIZE * 0.15}
-                    textAnchor="middle"
-                    className="font-sans text-[0.55rem] uppercase tracking-wide"
-                    fill="rgba(255,255,255,0.65)"
-                    opacity={labelOpacity}
-                  >
-                    {biomeName}
-                  </text>
-                )}
-                {showChips && (
-                  <foreignObject x={-HEX_SIZE} y={HEX_SIZE * 0.2} width={HEX_SIZE * 2} height={52} pointerEvents="none">
-                    <div className="flex flex-col items-center gap-1">
-                      <OwnerChips owners={ownerSummary.owners} extraCount={ownerSummary.extraCount} />
-                      {highlightColor && highlightLabel && (
-                        <div
-                          className="rounded-full px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-wider text-black"
-                          style={{ backgroundColor: highlightColor }}
-                        >
-                          {highlightLabel}
-                        </div>
-                      )}
-                    </div>
-                  </foreignObject>
-                )}
-              </g>
+              />
             );
           })}
         </g>
