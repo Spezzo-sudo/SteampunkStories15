@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alliance, GalaxySystem, Player } from '@/types';
 import { BIOMES } from '@/constants/biomes';
 import { biomeToTileStyle } from '@/lib/hexRender';
@@ -6,10 +6,11 @@ import type { TileStyle } from '@/lib/hexRender';
 import { axialToPixel as axialToPixelCoord, describeCoordinate, formatSystemCoordinate, getHexHeight } from '@/lib/hex';
 import HexTile from '@/components/galaxy/tiles/HexTile';
 import HexBackground from '@/components/galaxy/HexBackground';
-import HexTerrain from '@/components/galaxy/terrain/HexTerrain';
+import HexTerrain, { type TerrainTile } from '@/components/galaxy/terrain/HexTerrain';
 import { createTileTheme, type TileTheme } from '@/lib/hexTheme';
 import { hexToRgb, rgbToHex } from '@/lib/color';
 import { useSmoothPanZoom, type SmoothPanZoomState } from '@/hooks/useSmoothPanZoom';
+import { loadTerrainFromTiled } from '@/lib/tiled';
 
 interface HexMapProps {
   systems: GalaxySystem[];
@@ -248,6 +249,7 @@ const HexMap: React.FC<HexMapProps> = ({
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragPointer = useRef<{ x: number; y: number } | null>(null);
   const panZoomStateRef = useRef<SmoothPanZoomState | null>(null);
+  const [terrainTiles, setTerrainTiles] = useState<TerrainTile[]>([]);
 
   const initialPanZoom = useRef<SmoothPanZoomState>({ x: 0, y: 0, z: zoom }).current;
   const handlePanZoomChange = useCallback(
@@ -274,6 +276,23 @@ const HexMap: React.FC<HexMapProps> = ({
   useEffect(() => {
     panZoomStateRef.current = panZoomState;
   }, [panZoomState]);
+
+  useEffect(() => {
+    let active = true;
+    loadTerrainFromTiled('/maps/galaxy.tmj')
+      .then((tiles) => {
+        if (active) {
+          setTerrainTiles(tiles);
+        }
+      })
+      .catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error('Failed to load terrain map', error);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!panZoomStateRef.current) {
@@ -479,6 +498,16 @@ const HexMap: React.FC<HexMapProps> = ({
           <rect width="100%" height="100%" fill="url(#hex-minor-grid)" />
         )}
         <g transform={`translate(${currentOffset.x}, ${currentOffset.y}) scale(${currentZoom})`} className="cursor-grab">
+          {terrainTiles.length > 0 && (
+            <HexTerrain
+              tiles={terrainTiles}
+              width={bounds.width}
+              height={viewHeight}
+              zoom={currentZoom}
+              offset={currentOffset}
+              size={HEX_SIZE}
+            />
+          )}
           <HexBackground width={bounds.width} height={viewHeight} zoom={currentZoom} offset={currentOffset} size={HEX_SIZE} />
           {visibleEntries.map((entry) => {
             const {
@@ -537,5 +566,7 @@ const HexMap: React.FC<HexMapProps> = ({
 };
 
 export default React.memo(HexMap);
+
+
 
 
