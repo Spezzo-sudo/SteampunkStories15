@@ -6,7 +6,8 @@ import type { TileStyle } from '@/lib/hexRender';
 import { axialToPixel as axialToPixelCoord, describeCoordinate, formatSystemCoordinate, getHexHeight } from '@/lib/hex';
 import HexTile from '@/components/galaxy/tiles/HexTile';
 import HexBackground from '@/components/galaxy/HexBackground';
-import HexTerrain, { type TerrainTile } from '@/components/galaxy/terrain/HexTerrain';
+import HexTerrainCanvas from '@/components/galaxy/terrain/HexTerrainCanvas';
+import type { TerrainTile } from '@/components/galaxy/terrain/HexTerrainCanvas.types';
 import { createTileTheme, type TileTheme } from '@/lib/hexTheme';
 import { hexToRgb, rgbToHex } from '@/lib/color';
 import { useSmoothPanZoom, type SmoothPanZoomState } from '@/hooks/useSmoothPanZoom';
@@ -499,7 +500,7 @@ const HexMap: React.FC<HexMapProps> = ({
         )}
         <g transform={`translate(${currentOffset.x}, ${currentOffset.y}) scale(${currentZoom})`} className="cursor-grab">
           {terrainTiles.length > 0 && (
-            <HexTerrain
+            <HexTerrainCanvas
               tiles={terrainTiles}
               width={bounds.width}
               height={viewHeight}
@@ -566,6 +567,8 @@ const HexMap: React.FC<HexMapProps> = ({
 };
 
 export default React.memo(HexMap);
+
+
 
 
 

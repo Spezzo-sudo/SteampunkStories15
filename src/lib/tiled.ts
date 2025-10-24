@@ -61,7 +61,7 @@ export const loadTerrainFromTiled = async (mapUrl: string): Promise<TerrainTile[
     if (!src) {
       return;
     }
-    const spriteUrl = new URL(src, tilesetUrl).pathname;
+    const spriteUrl = new URL(src, tilesetUrl).toString();
     gidToSprite.set(tilesetInfo.firstgid + id, spriteUrl);
   });
 
