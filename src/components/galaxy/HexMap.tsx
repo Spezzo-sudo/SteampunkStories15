@@ -1,16 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Alliance, GalaxySystem, Player } from '@/types';
 import { BIOMES } from '@/constants/biomes';
 import { biomeToTileStyle } from '@/lib/hexRender';
 import type { TileStyle } from '@/lib/hexRender';
 import { axialToPixel as axialToPixelCoord, describeCoordinate, formatSystemCoordinate, getHexHeight } from '@/lib/hex';
 import HexTile from '@/components/galaxy/tiles/HexTile';
-import HexBackground, { type BackgroundTile } from '@/components/galaxy/HexBackground';
-import MapLoader from '@/components/galaxy/MapLoader';
+import HexBackground from '@/components/galaxy/HexBackground';
 import { createTileTheme, type TileTheme } from '@/lib/hexTheme';
 import { hexToRgb, rgbToHex } from '@/lib/color';
 import { useSmoothPanZoom, type SmoothPanZoomState } from '@/hooks/useSmoothPanZoom';
-import { axialToPixel as axialToPixelRaw, pixelToAxial } from '@/lib/hexMath';
 
 interface HexMapProps {
   systems: GalaxySystem[];
@@ -60,7 +58,7 @@ const HEX_SIZE = 48;
 const PADDING = HEX_SIZE * 3;
 const MIN_ZOOM = 0.35;
 const MAX_ZOOM = 3.0;
-const LOD_MINOR_GRID = 0.95;
+const LOD_MINOR_GRID = 1.5;
 const DEFAULT_MAP_HEIGHT = 460;
 
 const aggregateOwners = (system: GalaxySystem, players: Player[], alliances: Alliance[]): OwnerSummary => {
@@ -272,11 +270,6 @@ const HexMap: React.FC<HexMapProps> = ({
     onChange: handlePanZoomChange,
   });
 
-  const backgroundTilesRef = useRef<BackgroundTile[]>([]);
-  const backgroundBuildId = useRef(0);
-  const [backgroundProgress, setBackgroundProgress] = useState(100);
-  const [backgroundReady, setBackgroundReady] = useState(true);
-
   useEffect(() => {
     panZoomStateRef.current = panZoomState;
   }, [panZoomState]);
@@ -408,95 +401,6 @@ const HexMap: React.FC<HexMapProps> = ({
     dragPointer.current = null;
   };
 
-  useEffect(() => {
-    if (!bounds) {
-      backgroundTilesRef.current = [];
-      setBackgroundProgress(100);
-      setBackgroundReady(true);
-      return;
-    }
-
-    const buildId = backgroundBuildId.current + 1;
-    backgroundBuildId.current = buildId;
-
-    backgroundTilesRef.current = [];
-    setBackgroundProgress(0);
-    setBackgroundReady(false);
-
-    const abortController = new AbortController();
-    const overdraw = 2;
-
-    const worldWidth = bounds.width / Math.max(currentZoom, 0.0001);
-    const worldHeight = viewHeight / Math.max(currentZoom, 0.0001);
-    const minX = -currentOffset.x;
-    const minY = -currentOffset.y;
-    const maxX = minX + worldWidth;
-    const maxY = minY + worldHeight;
-
-    const corners = [
-      pixelToAxial(minX, minY, HEX_SIZE),
-      pixelToAxial(maxX, minY, HEX_SIZE),
-      pixelToAxial(minX, maxY, HEX_SIZE),
-      pixelToAxial(maxX, maxY, HEX_SIZE),
-    ];
-
-    const qMin = Math.floor(Math.min(...corners.map((corner) => corner.q))) - overdraw;
-    const qMax = Math.ceil(Math.max(...corners.map((corner) => corner.q))) + overdraw;
-    const rMin = Math.floor(Math.min(...corners.map((corner) => corner.r))) - overdraw;
-    const rMax = Math.ceil(Math.max(...corners.map((corner) => corner.r))) + overdraw;
-    const clipMargin = HEX_SIZE * 2;
-    const estimatedTotal = Math.max(1, (qMax - qMin + 1) * (rMax - rMin + 1));
-    let produced = 0;
-
-    function* tileIterator(): Generator<BackgroundTile> {
-      for (let r = rMin; r <= rMax; r += 1) {
-        for (let q = qMin; q <= qMax; q += 1) {
-          const { x, y } = axialToPixelRaw(q, r, HEX_SIZE);
-          if (x < minX - clipMargin || x > maxX + clipMargin || y < minY - clipMargin || y > maxY + clipMargin) {
-            continue;
-          }
-          yield { x, y, parity: (q + r) & 1 };
-        }
-      }
-    }
-
-    const iterator = tileIterator();
-
-    const pump = () => {
-      if (abortController.signal.aborted || backgroundBuildId.current !== buildId) {
-        return;
-      }
-      const start = performance.now();
-      let result = iterator.next();
-      while (!result.done) {
-        backgroundTilesRef.current.push(result.value);
-        produced += 1;
-        if (produced % 200 === 0 || produced === estimatedTotal) {
-          setBackgroundProgress(Math.min(100, (produced / estimatedTotal) * 100));
-        }
-        if (performance.now() - start > 12) {
-          break;
-        }
-        result = iterator.next();
-      }
-
-      if (result.done) {
-        if (!abortController.signal.aborted && backgroundBuildId.current === buildId) {
-          setBackgroundProgress(100);
-          setBackgroundReady(true);
-        }
-        return;
-      }
-
-      requestAnimationFrame(pump);
-    };
-
-    requestAnimationFrame(pump);
-
-    return () => {
-      abortController.abort();
-    };
-  }, [bounds, currentOffset.x, currentOffset.y, currentZoom, viewHeight]);
 
   const visibleEntries = useMemo(() => {
     if (!bounds) {
@@ -531,7 +435,6 @@ const HexMap: React.FC<HexMapProps> = ({
 
   return (
     <div className="relative steampunk-glass steampunk-border rounded-lg p-4">
-      {!backgroundReady && <MapLoader progress={backgroundProgress} />}
       <svg
         ref={svgRef}
         viewBox={`0 0 ${bounds.width} ${viewHeight}`}
@@ -554,27 +457,28 @@ const HexMap: React.FC<HexMapProps> = ({
             <stop offset="100%" stopColor="rgba(4, 7, 16, 0.95)" />
           </radialGradient>
           <pattern id="starfield" width="28" height="28" patternUnits="userSpaceOnUse">
-            <circle cx="2" cy="4" r="0.8" fill="rgba(252,211,77,0.12)" />
-            <circle cx="14" cy="12" r="0.6" fill="rgba(252,211,77,0.07)" />
-            <circle cx="24" cy="22" r="0.7" fill="rgba(252,211,77,0.09)" />
+            <circle cx="2" cy="4" r="0.8" fill="rgba(252,211,77,0.10)" />
+            <circle cx="14" cy="12" r="0.6" fill="rgba(252,211,77,0.06)" />
+            <circle cx="24" cy="22" r="0.7" fill="rgba(252,211,77,0.08)" />
           </pattern>
           <pattern id="hex-minor-grid" width="60" height="52" patternUnits="userSpaceOnUse">
             <path
               d="M0,26 L15,0 L45,0 L60,26 L45,52 L15,52 Z"
               fill="none"
               stroke="#94a3b8"
-              strokeOpacity="0.06"
+              strokeOpacity="0.12"
               strokeWidth="1"
+              vectorEffect="non-scaling-stroke"
             />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#map-halo)" rx="18" />
-        <rect width="100%" height="100%" fill="url(#starfield)" opacity="0.35" />
+        <rect width="100%" height="100%" fill="url(#starfield)" opacity="0.15" />
         {currentZoom >= LOD_MINOR_GRID && (
           <rect width="100%" height="100%" fill="url(#hex-minor-grid)" />
         )}
         <g transform={`translate(${currentOffset.x}, ${currentOffset.y}) scale(${currentZoom})`} className="cursor-grab">
-          <HexBackground tiles={backgroundTilesRef.current} hexSize={HEX_SIZE} />
+          <HexBackground width={bounds.width} height={viewHeight} zoom={currentZoom} offset={currentOffset} size={HEX_SIZE} />
           {visibleEntries.map((entry) => {
             const {
               system,

@@ -36,3 +36,13 @@ export const buildHexPolygon = (radius: number): [number, number][] =>
     const angle = ((60 * index - 30) * Math.PI) / 180;
     return [Math.cos(angle) * radius, Math.sin(angle) * radius];
   });
+
+/**
+ * Generates pointy-top hex points identical to {@link buildHexPolygon}.
+ */
+export const hexPoints = (radius: number): [number, number][] => buildHexPolygon(radius);
+
+/**
+ * Converts a list of points into an SVG points attribute string.
+ */
+export const pointsToAttribute = (points: [number, number][]) => points.map(([x, y]) => `${x},${y}`).join(' ');
