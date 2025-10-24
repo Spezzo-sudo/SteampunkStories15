@@ -25,6 +25,9 @@ const LOD_DECOR = 1.0;
 const LOD_LABELS = 1.1;
 const LOD_OWNER_BADGES = 1.2;
 
+const FilterGroup: React.FC<{ useNoise: boolean; filterId: string }> = ({ useNoise, filterId, children }) =>
+  useNoise ? <g filter={`url(#${filterId})`}>{children}</g> : <g>{children}</g>;
+
 /**
  * Renders a stylised, extruded hex tile that reflects the current biome theme.
  */
@@ -72,6 +75,7 @@ const HexTile: React.FC<HexTileProps> = ({
   const accent = highlightColor ?? theme.accent;
   const ownerBadgeStartY = size * 0.62 + (showExtrusion ? depth * 0.3 : 0);
   const ownerCircleRadius = Math.max(3, Math.round(size * 0.09));
+  const useNoise = zoom >= 1.0;
 
   return (
     <g transform={`translate(${position.x}, ${position.y})`} {...groupProps}>
@@ -122,7 +126,7 @@ const HexTile: React.FC<HexTileProps> = ({
           />
         ))}
 
-      <g filter={`url(#${filterNoise})`}>
+      <FilterGroup useNoise={useNoise} filterId={filterNoise}>
         <polygon
           points={pointsToAttribute(points)}
           fill={`url(#${gradTop})`}
@@ -141,7 +145,7 @@ const HexTile: React.FC<HexTileProps> = ({
           opacity={dimmed ? 0.45 : 0.85}
         />
         <polygon points={pointsToAttribute(points)} fill={`url(#${gradAo})`} opacity={0.32} />
-      </g>
+      </FilterGroup>
 
       {showDecor && (
         <g opacity={dimmed ? 0.55 : 0.9} aria-label="Tile decor">
@@ -302,4 +306,4 @@ const pointsToAttribute = (vertices: [number, number][]) =>
 
 const faceToAttribute = (face: [number, number][]) => pointsToAttribute(face);
 
-export default HexTile;
+export default React.memo(HexTile);

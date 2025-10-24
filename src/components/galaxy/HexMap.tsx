@@ -1,13 +1,16 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alliance, GalaxySystem, Player } from '@/types';
 import { BIOMES } from '@/constants/biomes';
 import { biomeToTileStyle } from '@/lib/hexRender';
 import type { TileStyle } from '@/lib/hexRender';
-import { axialToPixel, describeCoordinate, formatSystemCoordinate, getHexHeight } from '@/lib/hex';
+import { axialToPixel as axialToPixelCoord, describeCoordinate, formatSystemCoordinate, getHexHeight } from '@/lib/hex';
 import HexTile from '@/components/galaxy/tiles/HexTile';
-import HexBackground from '@/components/galaxy/HexBackground';
+import HexBackground, { type BackgroundTile } from '@/components/galaxy/HexBackground';
+import MapLoader from '@/components/galaxy/MapLoader';
 import { createTileTheme, type TileTheme } from '@/lib/hexTheme';
 import { hexToRgb, rgbToHex } from '@/lib/color';
+import { useSmoothPanZoom, type SmoothPanZoomState } from '@/hooks/useSmoothPanZoom';
+import { axialToPixel as axialToPixelRaw, pixelToAxial } from '@/lib/hexMath';
 
 interface HexMapProps {
   systems: GalaxySystem[];
@@ -56,7 +59,8 @@ interface LayoutMetadata {
 const HEX_SIZE = 48;
 const PADDING = HEX_SIZE * 3;
 const MIN_ZOOM = 0.35;
-const MAX_ZOOM = 3.5;
+const MAX_ZOOM = 3.0;
+const LOD_MINOR_GRID = 0.95;
 const DEFAULT_MAP_HEIGHT = 460;
 
 const aggregateOwners = (system: GalaxySystem, players: Player[], alliances: Alliance[]): OwnerSummary => {
@@ -141,7 +145,7 @@ const buildLayout = (
   const alliancesById = new Map(alliances.map((alliance) => [alliance.id, alliance]));
 
   const rawEntries = systems.map((system) => {
-    const { x, y } = axialToPixel(system.axial, HEX_SIZE);
+    const { x, y } = axialToPixelCoord(system.axial, HEX_SIZE);
     const ownerSummary = aggregateOwners(system, players, alliances);
     const { theme, biomeName } = resolveBiomeVisuals(system);
     const matchedAllianceIds = new Set<string>();
@@ -243,13 +247,48 @@ const HexMap: React.FC<HexMapProps> = ({
   height = DEFAULT_MAP_HEIGHT,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const dragStart = useRef<{ x: number; y: number } | null>(null);
-  const zoomRef = useRef(zoom);
+  const dragPointer = useRef<{ x: number; y: number } | null>(null);
+  const panZoomStateRef = useRef<SmoothPanZoomState | null>(null);
+
+  const initialPanZoom = useRef<SmoothPanZoomState>({ x: 0, y: 0, z: zoom }).current;
+  const handlePanZoomChange = useCallback(
+    (next: SmoothPanZoomState) => {
+      if (Math.abs(next.z - zoom) > 0.001) {
+        onZoomChange(Number(next.z.toFixed(2)));
+      }
+    },
+    [onZoomChange, zoom],
+  );
+
+  const {
+    state: panZoomState,
+    queuePan,
+    queueZoom,
+    setImmediate: setPanZoom,
+    sync: syncPanZoom,
+  } = useSmoothPanZoom(initialPanZoom, {
+    minZoom: MIN_ZOOM,
+    maxZoom: MAX_ZOOM,
+    onChange: handlePanZoomChange,
+  });
+
+  const backgroundTilesRef = useRef<BackgroundTile[]>([]);
+  const backgroundBuildId = useRef(0);
+  const [backgroundProgress, setBackgroundProgress] = useState(100);
+  const [backgroundReady, setBackgroundReady] = useState(true);
 
   useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
+    panZoomStateRef.current = panZoomState;
+  }, [panZoomState]);
+
+  useEffect(() => {
+    if (!panZoomStateRef.current) {
+      return;
+    }
+    if (Math.abs(panZoomStateRef.current.z - zoom) > 0.001) {
+      syncPanZoom({ ...panZoomStateRef.current, z: zoom });
+    }
+  }, [syncPanZoom, zoom]);
 
   const highlightedSet = useMemo(() => new Set(highlightedAllianceIds), [highlightedAllianceIds]);
 
@@ -261,8 +300,15 @@ const HexMap: React.FC<HexMapProps> = ({
   const { entries, bounds, contentBounds } = layout;
 
   const viewHeight = bounds ? Math.max(bounds.height, getHexHeight(HEX_SIZE) * 8) : getHexHeight(HEX_SIZE) * 8;
+  const currentZoom = panZoomState.z;
+  const currentOffset = { x: panZoomState.x, y: panZoomState.y };
 
   const autoFitRef = useRef(false);
+  const zoomRef = useRef(currentZoom);
+
+  useEffect(() => {
+    zoomRef.current = currentZoom;
+  }, [currentZoom]);
 
   useEffect(() => {
     if (!bounds || !contentBounds || entries.length === 0) {
@@ -284,19 +330,17 @@ const HexMap: React.FC<HexMapProps> = ({
 
     if (!autoFitRef.current || Math.abs(zoomRef.current - targetZoom) > 0.05) {
       autoFitRef.current = true;
-      if (Math.abs(zoom - targetZoom) > 0.01) {
-        onZoomChange(Number(targetZoom.toFixed(2)));
-      }
       const viewWidthWorld = clientWidth / targetZoom;
       const viewHeightWorld = clientHeight / targetZoom;
       const centerX = contentBounds.minX + contentWidth / 2;
       const centerY = contentBounds.minY + contentHeight / 2;
-      setOffset({
+      setPanZoom({
         x: viewWidthWorld / 2 - centerX,
         y: viewHeightWorld / 2 - centerY,
+        z: targetZoom,
       });
     }
-  }, [bounds, contentBounds, entries.length, onZoomChange, viewHeight, zoom]);
+  }, [bounds, contentBounds, entries.length, setPanZoom, viewHeight]);
 
   useEffect(() => {
     if (!bounds || entries.length === 0 || !selectedSystemId) {
@@ -308,77 +352,167 @@ const HexMap: React.FC<HexMapProps> = ({
       return;
     }
 
-    const currentZoom = zoomRef.current;
+    const current = zoomRef.current;
     const svg = svgRef.current;
     const clientWidth = svg?.clientWidth ?? bounds.width;
     const clientHeight = svg?.clientHeight ?? viewHeight;
-    const viewWidthWorld = clientWidth / currentZoom;
-    const viewHeightWorld = clientHeight / currentZoom;
-    setOffset({
-      x: viewWidthWorld / 2 - targetEntry.position.x,
-      y: viewHeightWorld / 2 - targetEntry.position.y,
-    });
-  }, [bounds, entries, selectedSystemId, viewHeight]);
+    const viewWidthWorld = clientWidth / current;
+    const viewHeightWorld = clientHeight / current;
+    const nextX = viewWidthWorld / 2 - targetEntry.position.x;
+    const nextY = viewHeightWorld / 2 - targetEntry.position.y;
+
+    if (Math.abs(nextX - panZoomState.x) > 0.01 || Math.abs(nextY - panZoomState.y) > 0.01) {
+      setPanZoom({
+        x: nextX,
+        y: nextY,
+        z: current,
+      });
+    }
+  }, [bounds, entries, panZoomState.x, panZoomState.y, selectedSystemId, setPanZoom, viewHeight]);
 
   const handleWheel = (event: React.WheelEvent<SVGSVGElement>) => {
     event.preventDefault();
     if (!bounds) {
       return;
     }
-    const delta = event.deltaY < 0 ? 0.15 : -0.15;
-    const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number((zoom + delta).toFixed(2))));
-    if (next === zoom) {
-      return;
-    }
-
     const svgElement = svgRef.current;
-    if (svgElement) {
-      const rect = svgElement.getBoundingClientRect();
-      const cursorX = event.clientX - rect.left;
-      const cursorY = event.clientY - rect.top;
-      const worldX = cursorX / zoom - offset.x;
-      const worldY = cursorY / zoom - offset.y;
-      const newOffsetX = cursorX / next - worldX;
-      const newOffsetY = cursorY / next - worldY;
-      setOffset({ x: newOffsetX, y: newOffsetY });
-    }
-
-    onZoomChange(next);
-  };
-
-  const handleMouseDown = (event: React.MouseEvent<SVGSVGElement>) => {
-    dragStart.current = { x: event.clientX, y: event.clientY };
-  };
-
-  const handleMouseMove = (event: React.MouseEvent<SVGSVGElement>) => {
-    if (!dragStart.current) {
+    if (!svgElement) {
       return;
     }
-    const dx = (event.clientX - dragStart.current.x) / zoom;
-    const dy = (event.clientY - dragStart.current.y) / zoom;
-    dragStart.current = { x: event.clientX, y: event.clientY };
-    setOffset((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
+    const rect = svgElement.getBoundingClientRect();
+    const cursorX = event.clientX - rect.left;
+    const cursorY = event.clientY - rect.top;
+    const worldX = cursorX / currentZoom - panZoomState.x;
+    const worldY = cursorY / currentZoom - panZoomState.y;
+    const delta = event.deltaY < 0 ? 0.18 : -0.18;
+    queueZoom(delta, { cursorX, cursorY, worldX, worldY });
   };
 
-  const handleMouseUp = () => {
-    dragStart.current = null;
+  const handlePointerDown = (event: React.PointerEvent<SVGSVGElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragPointer.current = { x: event.clientX, y: event.clientY };
   };
+
+  const handlePointerMove = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (!dragPointer.current || event.buttons !== 1) {
+      return;
+    }
+    const dx = event.clientX - dragPointer.current.x;
+    const dy = event.clientY - dragPointer.current.y;
+    dragPointer.current = { x: event.clientX, y: event.clientY };
+    queuePan(dx, dy);
+  };
+
+  const handlePointerUp = (event: React.PointerEvent<SVGSVGElement>) => {
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    dragPointer.current = null;
+  };
+
+  useEffect(() => {
+    if (!bounds) {
+      backgroundTilesRef.current = [];
+      setBackgroundProgress(100);
+      setBackgroundReady(true);
+      return;
+    }
+
+    const buildId = backgroundBuildId.current + 1;
+    backgroundBuildId.current = buildId;
+
+    backgroundTilesRef.current = [];
+    setBackgroundProgress(0);
+    setBackgroundReady(false);
+
+    const abortController = new AbortController();
+    const overdraw = 2;
+
+    const worldWidth = bounds.width / Math.max(currentZoom, 0.0001);
+    const worldHeight = viewHeight / Math.max(currentZoom, 0.0001);
+    const minX = -currentOffset.x;
+    const minY = -currentOffset.y;
+    const maxX = minX + worldWidth;
+    const maxY = minY + worldHeight;
+
+    const corners = [
+      pixelToAxial(minX, minY, HEX_SIZE),
+      pixelToAxial(maxX, minY, HEX_SIZE),
+      pixelToAxial(minX, maxY, HEX_SIZE),
+      pixelToAxial(maxX, maxY, HEX_SIZE),
+    ];
+
+    const qMin = Math.floor(Math.min(...corners.map((corner) => corner.q))) - overdraw;
+    const qMax = Math.ceil(Math.max(...corners.map((corner) => corner.q))) + overdraw;
+    const rMin = Math.floor(Math.min(...corners.map((corner) => corner.r))) - overdraw;
+    const rMax = Math.ceil(Math.max(...corners.map((corner) => corner.r))) + overdraw;
+    const clipMargin = HEX_SIZE * 2;
+    const estimatedTotal = Math.max(1, (qMax - qMin + 1) * (rMax - rMin + 1));
+    let produced = 0;
+
+    function* tileIterator(): Generator<BackgroundTile> {
+      for (let r = rMin; r <= rMax; r += 1) {
+        for (let q = qMin; q <= qMax; q += 1) {
+          const { x, y } = axialToPixelRaw(q, r, HEX_SIZE);
+          if (x < minX - clipMargin || x > maxX + clipMargin || y < minY - clipMargin || y > maxY + clipMargin) {
+            continue;
+          }
+          yield { x, y, parity: (q + r) & 1 };
+        }
+      }
+    }
+
+    const iterator = tileIterator();
+
+    const pump = () => {
+      if (abortController.signal.aborted || backgroundBuildId.current !== buildId) {
+        return;
+      }
+      const start = performance.now();
+      let result = iterator.next();
+      while (!result.done) {
+        backgroundTilesRef.current.push(result.value);
+        produced += 1;
+        if (produced % 200 === 0 || produced === estimatedTotal) {
+          setBackgroundProgress(Math.min(100, (produced / estimatedTotal) * 100));
+        }
+        if (performance.now() - start > 12) {
+          break;
+        }
+        result = iterator.next();
+      }
+
+      if (result.done) {
+        if (!abortController.signal.aborted && backgroundBuildId.current === buildId) {
+          setBackgroundProgress(100);
+          setBackgroundReady(true);
+        }
+        return;
+      }
+
+      requestAnimationFrame(pump);
+    };
+
+    requestAnimationFrame(pump);
+
+    return () => {
+      abortController.abort();
+    };
+  }, [bounds, currentOffset.x, currentOffset.y, currentZoom, viewHeight]);
 
   const visibleEntries = useMemo(() => {
     if (!bounds) {
       return [];
     }
     const padding = HEX_SIZE * 6;
-    const worldWidth = bounds.width / zoom;
-    const worldHeight = viewHeight / zoom;
-    const minX = -offset.x - padding;
+    const worldWidth = bounds.width / currentZoom;
+    const worldHeight = viewHeight / currentZoom;
+    const minX = -currentOffset.x - padding;
     const maxX = minX + worldWidth + padding * 2;
-    const minY = -offset.y - padding;
+    const minY = -currentOffset.y - padding;
     const maxY = minY + worldHeight + padding * 2;
     return entries.filter(
       ({ position }) => position.x >= minX && position.x <= maxX && position.y >= minY && position.y <= maxY,
     );
-  }, [bounds, entries, offset.x, offset.y, viewHeight, zoom]);
+  }, [bounds, currentOffset.x, currentOffset.y, currentZoom, entries, viewHeight]);
 
   if (!bounds || entries.length === 0) {
     const fallbackHeight = getHexHeight(HEX_SIZE) * 6;
@@ -396,7 +530,8 @@ const HexMap: React.FC<HexMapProps> = ({
   }
 
   return (
-    <div className="steampunk-glass steampunk-border rounded-lg p-4">
+    <div className="relative steampunk-glass steampunk-border rounded-lg p-4">
+      {!backgroundReady && <MapLoader progress={backgroundProgress} />}
       <svg
         ref={svgRef}
         viewBox={`0 0 ${bounds.width} ${viewHeight}`}
@@ -404,10 +539,10 @@ const HexMap: React.FC<HexMapProps> = ({
         style={{ height }}
         role="presentation"
         onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
       >
         <defs>
           <radialGradient id="hex-glow" cx="50%" cy="50%" r="60%">
@@ -424,20 +559,22 @@ const HexMap: React.FC<HexMapProps> = ({
             <circle cx="24" cy="22" r="0.7" fill="rgba(252,211,77,0.09)" />
           </pattern>
           <pattern id="hex-minor-grid" width="60" height="52" patternUnits="userSpaceOnUse">
-            <path d="M0 26 L15 0 L45 0 L60 26 L45 52 L15 52 Z" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="1" />
+            <path
+              d="M0,26 L15,0 L45,0 L60,26 L45,52 L15,52 Z"
+              fill="none"
+              stroke="#94a3b8"
+              strokeOpacity="0.06"
+              strokeWidth="1"
+            />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#map-halo)" rx="18" />
         <rect width="100%" height="100%" fill="url(#starfield)" opacity="0.35" />
-        <rect width="100%" height="100%" fill="url(#hex-minor-grid)" opacity="0.28" />
-        <g transform={`translate(${offset.x}, ${offset.y}) scale(${zoom})`} className="cursor-grab">
-          <HexBackground
-            width={bounds.width}
-            height={viewHeight}
-            zoom={zoom}
-            offset={offset}
-            hexSize={HEX_SIZE}
-          />
+        {currentZoom >= LOD_MINOR_GRID && (
+          <rect width="100%" height="100%" fill="url(#hex-minor-grid)" />
+        )}
+        <g transform={`translate(${currentOffset.x}, ${currentOffset.y}) scale(${currentZoom})`} className="cursor-grab">
+          <HexBackground tiles={backgroundTilesRef.current} hexSize={HEX_SIZE} />
           {visibleEntries.map((entry) => {
             const {
               system,
@@ -469,7 +606,7 @@ const HexMap: React.FC<HexMapProps> = ({
                 position={position}
                 size={HEX_SIZE}
                 theme={tileTheme}
-                zoom={zoom}
+                zoom={currentZoom}
                 selected={isSelected}
                 highlighted={isHighlighted}
                 highlightColor={highlightColor}

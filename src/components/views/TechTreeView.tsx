@@ -172,7 +172,7 @@ const TechTreeView: React.FC = () => {
           )}
         </div>
 
-        <aside className="flex h-full flex-col gap-4">
+        <aside className="flex h-full min-w-0 flex-col gap-4">
           <article className="flex-1 rounded-2xl border border-yellow-800/30 bg-black/50 p-6 shadow-xl">
             {selectedNode ? (
               <TechNodeDetails node={selectedNode} />
@@ -210,13 +210,13 @@ const TechNodeDetails: React.FC<TechNodeDetailsProps> = ({ node }) => {
   const { hp, attack, defense, speed, upkeep } = node.stats;
 
   return (
-    <div className="flex h-full flex-col gap-4">
+    <div className="flex h-full min-w-0 flex-col gap-4">
       <header className="space-y-2 border-b border-yellow-800/30 pb-4">
         <h3 className="text-[clamp(1.4rem,0.8vw+1.3rem,2rem)] font-cinzel text-yellow-200">{node.name}</h3>
         <p className="text-xs uppercase tracking-[0.3em] text-yellow-400">{CATEGORY_LABELS[node.category]}</p>
-        <p className="text-sm text-gray-200">{node.description}</p>
+        <p className="text-sm text-gray-200 break-words hyphens-auto">{node.description}</p>
       </header>
-      <div className="grid gap-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+      <div className="grid min-w-0 gap-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <div className="space-y-4">
           <section>
             <h4 className="text-xs uppercase tracking-wider text-yellow-300">Kernwerte</h4>
@@ -275,10 +275,10 @@ const TechNodeDetails: React.FC<TechNodeDetailsProps> = ({ node }) => {
           </section>
           <section>
             <h4 className="text-xs uppercase tracking-wider text-yellow-300">Lore &amp; Notizen</h4>
-            <p className="mt-2 text-sm text-gray-200">{node.lore}</p>
+            <p className="mt-2 text-sm text-gray-200 break-words hyphens-auto">{node.lore}</p>
           </section>
         </div>
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <div className="flex-1 rounded-xl border border-yellow-800/30 bg-black/40 p-3">
             <div
               className="flex h-full flex-col items-center justify-center rounded-lg text-center text-gray-100"
@@ -288,8 +288,10 @@ const TechNodeDetails: React.FC<TechNodeDetailsProps> = ({ node }) => {
               }}
             >
               <span className="text-5xl drop-shadow-md">{CATEGORY_ICONS[node.category]}</span>
-              <p className="mt-3 text-sm text-gray-100/90">Illustration-Platzhalter</p>
-              <p className="text-xs text-gray-200/70">Ersetze mich durch ein Bild in <code>public/assets/tech</code>.</p>
+              <p className="mt-3 text-sm text-gray-100/90 break-words hyphens-auto">Illustration-Platzhalter</p>
+              <p className="text-xs text-gray-200/70 break-words hyphens-auto">
+                Ersetze mich durch ein Bild in <code>public/assets/tech</code>.
+              </p>
             </div>
           </div>
           <section className="rounded-xl border border-yellow-800/30 bg-black/40 p-3 text-xs text-gray-300">
