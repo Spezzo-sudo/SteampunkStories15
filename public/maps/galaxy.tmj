@@ -1,0 +1,39 @@
+{
+  "type": "map",
+  "version": "1.11",
+  "tiledversion": "1.11.0",
+  "orientation": "staggered",
+  "renderorder": "right-down",
+  "width": 8,
+  "height": 6,
+  "tilewidth": 256,
+  "tileheight": 256,
+  "hexsidelength": 128,
+  "staggeraxis": "y",
+  "staggerindex": "odd",
+  "infinite": false,
+  "nextlayerid": 2,
+  "nextobjectid": 1,
+  "tilesets": [
+    { "firstgid": 1, "source": "../assets/tiles256/biomes.tsx" }
+  ],
+  "layers": [
+    {
+      "type": "tilelayer",
+      "id": 1,
+      "name": "Biomes",
+      "width": 8,
+      "height": 6,
+      "opacity": 1,
+      "visible": true,
+      "data": [
+        1, 8, 10, 12, 6, 5, 7, 11,
+        9, 2, 12, 3, 4, 1, 10, 6,
+        12, 7, 8, 5, 2, 11, 3, 9,
+        6, 12, 1, 10, 7, 12, 8, 5,
+        4, 11, 3, 9, 2, 6, 1, 10,
+        5, 8, 12, 7, 11, 3, 9, 2
+      ]
+    }
+  ]
+}

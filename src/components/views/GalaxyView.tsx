@@ -10,6 +10,7 @@ import VirtualList from '@/lib/virtualList';
 import { formatSystemCoordinate, parseSystemCoordinate } from '@/lib/hex';
 import OwnerChips, { OwnerChipEntry } from '@/components/galaxy/OwnerChips';
 import ChatSidebar from '@/components/messaging/ChatSidebar';
+import SystemsSlimTable from '@/components/galaxy/SystemsSlimTable';
 import { FOCUS_OUTLINE } from '@/styles/tokens';
 import { useMissionStore } from '@/store/missionStore';
 import { ALL_BIOMES, BIOMES } from '@/constants/biomes';
@@ -176,99 +177,74 @@ const MapOverlay: React.FC<MapOverlayProps> = ({
             </button>
           </div>
         </header>
-        <div className="flex flex-1 flex-col gap-6 overflow-hidden xl:flex-row">
-          <div className="relative flex-1">
-            <HexMap
-              systems={systems}
-              players={players}
-              alliances={alliances}
-              selectedSystemId={selectedSystemId}
-              onSelect={onSelect}
-              zoom={zoom}
-              onZoomChange={onZoomChange}
-              filteredSystemIds={filteredSystemIds}
-              highlightedAllianceIds={highlightedAllianceIds}
-              height={720}
-            />
-            <div className="pointer-events-none absolute inset-0 flex items-start justify-end p-4">
-              <div className="pointer-events-auto inline-flex flex-col gap-2 rounded-xl border border-yellow-800/30 bg-black/70 p-2 shadow-lg">
-                <button
-                  type="button"
-                  onClick={() => onZoomChange(Math.min(MAX_ZOOM, Number((zoom + ZOOM_STEP).toFixed(2))))}
-                  className={`rounded-md border border-yellow-800/40 px-3 py-1 text-sm text-yellow-100 hover:text-white ${FOCUS_OUTLINE.className}`}
-                >
-                  +
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onZoomChange(Math.max(MIN_ZOOM, Number((zoom - ZOOM_STEP).toFixed(2))))}
-                  className={`rounded-md border border-yellow-800/40 px-3 py-1 text-sm text-yellow-100 hover:text-white ${FOCUS_OUTLINE.className}`}
-                >
-                  −
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onZoomChange(1.15)}
-                  className={`rounded-md border border-yellow-800/40 px-3 py-1 text-xs text-yellow-100 hover:text-white ${FOCUS_OUTLINE.className}`}
-                >
-                  Reset
-                </button>
-              </div>
+        <div className="flex flex-col gap-6">
+        <div className="relative w-full">
+          <div className="absolute left-4 top-4 z-[55]">
+            <button
+              type="button"
+              onClick={() => setIsMapExpanded(true)}
+              className={`rounded-md border border-yellow-800/40 bg-black/60 px-3 py-1 text-xs uppercase tracking-wide text-yellow-100 hover:bg-yellow-800/40 hover:text-white ${FOCUS_OUTLINE.className}`}
+            >
+              Karte vergroessern
+            </button>
+          </div>
+          <HexMap
+            systems={sectorFilteredSystems}
+            players={players}
+            alliances={alliances}
+            selectedSystemId={selectedSystemId}
+            onSelect={handleMapSelect}
+            zoom={zoom}
+            onZoomChange={setZoom}
+            filteredSystemIds={filteredSystemIds}
+            highlightedAllianceIds={selectedAllianceIds}
+            height={mapHeight}
+          />
+          <div className="absolute bottom-4 right-4 z-40">
+            <div className="inline-flex flex-col gap-2 rounded-xl border border-yellow-800/30 bg-black/60 p-2 shadow-lg">
+              <button
+                type="button"
+                onClick={() =>
+                  setZoom((value) => Math.min(MAX_ZOOM, Number((value + ZOOM_STEP).toFixed(2))))
+                }
+                className={`rounded-md border border-yellow-800/40 px-2 py-1 text-sm text-yellow-100 ${FOCUS_OUTLINE.className}`}
+              >
+                +
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  setZoom((value) => Math.max(MIN_ZOOM, Number((value - ZOOM_STEP).toFixed(2))))
+                }
+                className={`rounded-md border border-yellow-800/40 px-2 py-1 text-sm text-yellow-100 ${FOCUS_OUTLINE.className}`}
+              >
+                -
+              </button>
+              <button
+                type="button"
+                onClick={() => setZoom(1)}
+                className={`rounded-md border border-yellow-800/40 px-2 py-1 text-xs text-yellow-100 ${FOCUS_OUTLINE.className}`}
+              >
+                Reset
+              </button>
             </div>
           </div>
-          <aside className="flex w/full max-w-xs flex-col gap-4">
-            <GalaxyLegend biomes={legendBiomes} alliances={legendAlliances} />
-            {chunkMeta ? (
-              <div className="rounded-2xl border border-yellow-800/30 bg-black/45 p-4 text-xs text-gray-300">
-                <h3 className="text-xs font-cinzel uppercase tracking-wider text-yellow-200">Universums-Uebersicht</h3>
-                <p className="mt-2 text-xs text-gray-400">
-                  Tippe auf einen Block, um direkt zu einem Sektor-Cluster zu springen. Die Zahl zeigt die Anzahl der Systeme in diesem Abschnitt.
-                </p>
-                <div className="mt-3 grid gap-2 text-xs" style={{ gridTemplateColumns: `repeat(${chunkCounts.q}, minmax(0, 1fr))` }}>
-                  {Array.from({ length: chunkCounts.r }).map((_, rIndex) =>
-                    Array.from({ length: chunkCounts.q }).map((_, qIndex) => {
-                      const key = `${qIndex}-${rIndex}`;
-                      const cell = chunkMeta!.cells.get(key);
-                      const isActive = sectorChunk.qIndex === qIndex && sectorChunk.rIndex === rIndex;
-                      return (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => onSelectChunk(qIndex, rIndex)}
-                          className={`flex flex-col rounded-lg border px-2 py-2 text-left transition ${FOCUS_OUTLINE.className} ${
-                            isActive
-                              ? 'border-yellow-400/80 bg-yellow-500/10 text-yellow-100 shadow-[0_0_18px_rgba(250,204,85,0.25)]'
-                              : 'border-yellow-800/40 bg-black/50 text-gray-300 hover:border-yellow-600/60 hover:text-yellow-100'
-                          }`}
-                        >
-                          <span className="text-[0.7rem] uppercase tracking-wide text-yellow-300">
-                            Q {cell?.range.qMin ?? '-'}-{cell?.range.qMax ?? '-'}
-                          </span>
-                          <span className="text-[0.7rem] uppercase tracking-wide text-yellow-300">
-                            R {cell?.range.rMin ?? '-'}-{cell?.range.rMax ?? '-'}
-                          </span>
-                          <span className="mt-1 text-xs text-gray-200">{cell?.count ?? 0} Systeme</span>
-                        </button>
-                      );
-                    }),
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-yellow-800/30 bg-black/45 p-4 text-xs text-gray-300">
-                <h3 className="text-xs font-cinzel uppercase tracking-wider text-yellow-200">Universums-Uebersicht</h3>
-                <p className="mt-2 text-xs text-gray-400">Zu wenige Daten, um einen Uebersichtsblock zu berechnen.</p>
-              </div>
-            )}
-            <div className="rounded-2xl border border-yellow-800/30 bg-black/45 p-4 text-xs text-gray-300">
-              <h3 className="text-xs font-cinzel uppercase tracking-wider text-yellow-200">Chunk-Quicknav</h3>
-              <p className="mt-2 text-xs text-gray-400">
-                Nutze die Pfeile oder das Uebersichtsraster, um angrenzende Sektorblocke anzusteuern. Die Karte bleibt synchron mit der Liste
-                und den Allianz-Highlights.
-              </p>
-            </div>
-          </aside>
         </div>
+        <SystemsSlimTable
+          rows={tableRows}
+          selectedId={selectedSystemId}
+          onSelect={handleRowSelect}
+          height={tableHeight}
+        />
+        <div className="grid gap-4 lg:grid-cols-2">
+          <GalaxyLegend biomes={legendBiomes} alliances={legendAlliances} />
+          <ChatSidebar
+            coordinate={selectedSystem ? formatSystemCoordinate(selectedSystem) : undefined}
+            onShareCoordinate={shareCoordinate}
+          />
+        </div>
+      </div>
+
       </div>
     </div>
   );
@@ -328,6 +304,8 @@ export default function GalaxyView(): JSX.Element {
   const [zoom, setZoom] = useState(1.15);
   const [selectedAllianceIds, setSelectedAllianceIds] = useState<string[]>([]);
   const [isMapExpanded, setIsMapExpanded] = useState(false);
+  const [mapHeight, setMapHeight] = useState(640);
+  const [tableHeight, setTableHeight] = useState(240);
   const sectorInitRef = useRef(false);
 
   const selectedSystem = useMemo(
@@ -335,7 +313,21 @@ export default function GalaxyView(): JSX.Element {
     [selectedSystemId, systems],
   );
 
-  useEffect(() => {
+    useEffect(() => {
+    const updateHeights = () => {
+      if (typeof window === 'undefined') {
+        return;
+      }
+      const vh = window.innerHeight || 900;
+      setMapHeight(Math.max(560, Math.round(vh * 0.75)));
+      setTableHeight(Math.max(200, Math.round(vh * 0.2)));
+    };
+    updateHeights();
+    window.addEventListener('resize', updateHeights);
+    return () => window.removeEventListener('resize', updateHeights);
+  }, []);
+
+useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sysParam = params.get('sys');
     if (!sysParam) {
@@ -976,3 +968,6 @@ export default function GalaxyView(): JSX.Element {
     </section>
   );
 }
+
+
+

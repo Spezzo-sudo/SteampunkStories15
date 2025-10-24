@@ -6,6 +6,7 @@ import type { TileStyle } from '@/lib/hexRender';
 import { axialToPixel as axialToPixelCoord, describeCoordinate, formatSystemCoordinate, getHexHeight } from '@/lib/hex';
 import HexTile from '@/components/galaxy/tiles/HexTile';
 import HexBackground from '@/components/galaxy/HexBackground';
+import HexTerrain from '@/components/galaxy/terrain/HexTerrain';
 import { createTileTheme, type TileTheme } from '@/lib/hexTheme';
 import { hexToRgb, rgbToHex } from '@/lib/color';
 import { useSmoothPanZoom, type SmoothPanZoomState } from '@/hooks/useSmoothPanZoom';
@@ -536,3 +537,5 @@ const HexMap: React.FC<HexMapProps> = ({
 };
 
 export default React.memo(HexMap);
+
+
