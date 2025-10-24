@@ -876,16 +876,14 @@ export default function GalaxyView(): JSX.Element {
         </div>
         <div className="space-y-4">
           <div className="relative">
-            <div className="pointer-events-none absolute inset-0 flex items-start justify-between p-4">
-              <div className="pointer-events-auto flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsMapExpanded(true)}
-                  className={`rounded-md border border-yellow-800/40 bg-black/50 px-3 py-1 text-xs uppercase tracking-wide text-yellow-100 hover:text-white ${FOCUS_OUTLINE.className}`}
-                >
-                  Karte vergroessern
-                </button>
-              </div>
+            <div className="absolute left-4 top-4 z-[55]">
+              <button
+                type="button"
+                onClick={() => setIsMapExpanded(true)}
+                className={`rounded-md border border-yellow-800/40 bg-black/60 px-3 py-1 text-xs uppercase tracking-wide text-yellow-100 hover:bg-yellow-800/40 hover:text-white ${FOCUS_OUTLINE.className}`}
+              >
+                Karte vergroessern
+              </button>
             </div>
             <HexMap
               systems={sectorFilteredSystems}
@@ -899,8 +897,8 @@ export default function GalaxyView(): JSX.Element {
               highlightedAllianceIds={selectedAllianceIds}
               height={520}
             />
-            <div className="pointer-events-none absolute inset-0 flex items-end justify-end p-4">
-              <div className="pointer-events-auto inline-flex flex-col gap-2 rounded-xl border border-yellow-800/30 bg-black/60 p-2 shadow-lg">
+            <div className="absolute bottom-4 right-4 z-40">
+              <div className="inline-flex flex-col gap-2 rounded-xl border border-yellow-800/30 bg-black/60 p-2 shadow-lg">
                 <button
                   type="button"
                   onClick={() =>

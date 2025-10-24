@@ -5,6 +5,7 @@ import { biomeToTileStyle } from '@/lib/hexRender';
 import type { TileStyle } from '@/lib/hexRender';
 import { axialToPixel, describeCoordinate, formatSystemCoordinate, getHexHeight } from '@/lib/hex';
 import HexTile from '@/components/galaxy/tiles/HexTile';
+import HexBackground from '@/components/galaxy/HexBackground';
 import { createTileTheme, type TileTheme } from '@/lib/hexTheme';
 import { hexToRgb, rgbToHex } from '@/lib/color';
 
@@ -43,6 +44,12 @@ interface LayoutMetadata {
   bounds: {
     width: number;
     height: number;
+  } | null;
+  contentBounds: {
+    minX: number;
+    maxX: number;
+    minY: number;
+    maxY: number;
   } | null;
 }
 
@@ -128,7 +135,7 @@ const buildLayout = (
   highlightedAllianceIds: Set<string>,
 ): LayoutMetadata => {
   if (systems.length === 0) {
-    return { entries: [], bounds: null };
+    return { entries: [], bounds: null, contentBounds: null };
   }
 
   const alliancesById = new Map(alliances.map((alliance) => [alliance.id, alliance]));
@@ -198,9 +205,25 @@ const buildLayout = (
     biomeName: entry.biomeName,
   }));
 
+  const contentBounds = entries.reduce(
+    (acc, entry) => ({
+      minX: Math.min(acc.minX, entry.position.x),
+      maxX: Math.max(acc.maxX, entry.position.x),
+      minY: Math.min(acc.minY, entry.position.y),
+      maxY: Math.max(acc.maxY, entry.position.y),
+    }),
+    {
+      minX: entries[0].position.x,
+      maxX: entries[0].position.x,
+      minY: entries[0].position.y,
+      maxY: entries[0].position.y,
+    },
+  );
+
   return {
     entries,
     bounds: { width, height },
+    contentBounds,
   };
 };
 
@@ -235,22 +258,67 @@ const HexMap: React.FC<HexMapProps> = ({
     [alliances, filteredSystemIds, highlightedSet, players, systems],
   );
 
-  const { entries, bounds } = layout;
+  const { entries, bounds, contentBounds } = layout;
+
+  const viewHeight = bounds ? Math.max(bounds.height, getHexHeight(HEX_SIZE) * 8) : getHexHeight(HEX_SIZE) * 8;
+
+  const autoFitRef = useRef(false);
 
   useEffect(() => {
-    if (!bounds || entries.length === 0) {
+    if (!bounds || !contentBounds || entries.length === 0) {
+      return;
+    }
+    const svg = svgRef.current;
+    const clientWidth = svg?.clientWidth ?? bounds.width;
+    const clientHeight = svg?.clientHeight ?? viewHeight;
+    const padding = HEX_SIZE * 2;
+    const contentWidth = Math.max(1, contentBounds.maxX - contentBounds.minX);
+    const contentHeight = Math.max(1, contentBounds.maxY - contentBounds.minY);
+    const targetZoom = Math.min(
+      MAX_ZOOM,
+      Math.max(
+        MIN_ZOOM,
+        Math.min(clientWidth / (contentWidth + padding), clientHeight / (contentHeight + padding)),
+      ),
+    );
+
+    if (!autoFitRef.current || Math.abs(zoomRef.current - targetZoom) > 0.05) {
+      autoFitRef.current = true;
+      if (Math.abs(zoom - targetZoom) > 0.01) {
+        onZoomChange(Number(targetZoom.toFixed(2)));
+      }
+      const viewWidthWorld = clientWidth / targetZoom;
+      const viewHeightWorld = clientHeight / targetZoom;
+      const centerX = contentBounds.minX + contentWidth / 2;
+      const centerY = contentBounds.minY + contentHeight / 2;
+      setOffset({
+        x: viewWidthWorld / 2 - centerX,
+        y: viewHeightWorld / 2 - centerY,
+      });
+    }
+  }, [bounds, contentBounds, entries.length, onZoomChange, viewHeight, zoom]);
+
+  useEffect(() => {
+    if (!bounds || entries.length === 0 || !selectedSystemId) {
       return;
     }
 
-    const fallback = entries.find((entry) => entry.matchesFilter) ?? entries[0];
-    const target = selectedSystemId
-      ? entries.find((entry) => entry.system.id === selectedSystemId) ?? fallback
-      : fallback;
+    const targetEntry = entries.find((entry) => entry.system.id === selectedSystemId);
+    if (!targetEntry) {
+      return;
+    }
+
     const currentZoom = zoomRef.current;
-    const centerX = bounds.width / 2 / currentZoom;
-    const centerY = (Math.max(bounds.height, getHexHeight(HEX_SIZE) * 8)) / 2 / currentZoom;
-    setOffset({ x: centerX - target.position.x, y: centerY - target.position.y });
-  }, [entries, bounds, selectedSystemId]);
+    const svg = svgRef.current;
+    const clientWidth = svg?.clientWidth ?? bounds.width;
+    const clientHeight = svg?.clientHeight ?? viewHeight;
+    const viewWidthWorld = clientWidth / currentZoom;
+    const viewHeightWorld = clientHeight / currentZoom;
+    setOffset({
+      x: viewWidthWorld / 2 - targetEntry.position.x,
+      y: viewHeightWorld / 2 - targetEntry.position.y,
+    });
+  }, [bounds, entries, selectedSystemId, viewHeight]);
 
   const handleWheel = (event: React.WheelEvent<SVGSVGElement>) => {
     event.preventDefault();
@@ -295,8 +363,6 @@ const HexMap: React.FC<HexMapProps> = ({
   const handleMouseUp = () => {
     dragStart.current = null;
   };
-
-  const viewHeight = bounds ? Math.max(bounds.height, getHexHeight(HEX_SIZE) * 8) : getHexHeight(HEX_SIZE) * 8;
 
   const visibleEntries = useMemo(() => {
     if (!bounds) {
@@ -365,6 +431,13 @@ const HexMap: React.FC<HexMapProps> = ({
         <rect width="100%" height="100%" fill="url(#starfield)" opacity="0.35" />
         <rect width="100%" height="100%" fill="url(#hex-minor-grid)" opacity="0.28" />
         <g transform={`translate(${offset.x}, ${offset.y}) scale(${zoom})`} className="cursor-grab">
+          <HexBackground
+            width={bounds.width}
+            height={viewHeight}
+            zoom={zoom}
+            offset={offset}
+            hexSize={HEX_SIZE}
+          />
           {visibleEntries.map((entry) => {
             const {
               system,
