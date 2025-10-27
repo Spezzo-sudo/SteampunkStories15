@@ -500,14 +500,22 @@ const HexMap: React.FC<HexMapProps> = ({
         )}
         <g transform={`translate(${currentOffset.x}, ${currentOffset.y}) scale(${currentZoom})`} className="cursor-grab">
           {terrainTiles.length > 0 && (
-            <HexTerrainCanvas
-              tiles={terrainTiles}
+            <foreignObject
+              x={0}
+              y={0}
               width={bounds.width}
               height={viewHeight}
-              zoom={currentZoom}
-              offset={currentOffset}
-              size={HEX_SIZE}
-            />
+              pointerEvents="none"
+            >
+              <HexTerrainCanvas
+                tiles={terrainTiles}
+                width={bounds.width}
+                height={viewHeight}
+                zoom={currentZoom}
+                offset={currentOffset}
+                size={HEX_SIZE}
+              />
+            </foreignObject>
           )}
           <HexBackground width={bounds.width} height={viewHeight} zoom={currentZoom} offset={currentOffset} size={HEX_SIZE} />
           {visibleEntries.map((entry) => {
