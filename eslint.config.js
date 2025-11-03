@@ -49,6 +49,8 @@ export default [
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
       '@typescript-eslint/no-floating-promises': 'error',
+      'array-callback-return': 'error',
+      'react/jsx-key': 'error',
     },
   },
   prettier,

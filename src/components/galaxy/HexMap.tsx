@@ -64,14 +64,18 @@ const MAX_ZOOM = 3.0;
 const LOD_MINOR_GRID = 1.5;
 const DEFAULT_MAP_HEIGHT = 460;
 
-const aggregateOwners = (system: GalaxySystem, players: Player[], alliances: Alliance[]): OwnerSummary => {
+const aggregateOwners = (
+  system: GalaxySystem,
+  playersById: Map<string, Player>,
+  alliancesById: Map<string, Alliance>,
+): OwnerSummary => {
   const ownerMap = new Map<string, { label: string; color: string; count: number }>();
-  system.planets.forEach((planet) => {
+  system.planets?.forEach((planet) => {
     if (!planet.ownerId) {
       return;
     }
-    const player = players.find((entry) => entry.id === planet.ownerId);
-    const alliance = alliances.find((entry) => entry.id === planet.allianceId);
+    const player = playersById.get(planet.ownerId);
+    const alliance = planet.allianceId ? alliancesById.get(planet.allianceId) : undefined;
     const label = alliance ? alliance.tag : player?.name ?? 'Unbekannt';
     const color = alliance?.color ?? player?.color ?? '#facc15';
     const current = ownerMap.get(planet.ownerId);
@@ -92,6 +96,22 @@ const aggregateOwners = (system: GalaxySystem, players: Player[], alliances: All
   };
 };
 
+const srgbToLinear = (channel: number): number => {
+  const normalized = channel / 255;
+  if (normalized <= 0.04045) {
+    return normalized / 12.92;
+  }
+  return Math.pow((normalized + 0.055) / 1.055, 2.4);
+};
+
+const linearToSrgb = (channel: number): number => {
+  const clamped = Math.max(0, Math.min(1, channel));
+  if (clamped <= 0.0031308) {
+    return clamped * 12.92 * 255;
+  }
+  return (1.055 * Math.pow(clamped, 1 / 2.4) - 0.055) * 255;
+};
+
 const averageHexColors = (colors: string[]): string => {
   if (colors.length === 0) {
     return '#facc15';
@@ -100,17 +120,17 @@ const averageHexColors = (colors: string[]): string => {
     .map((color) => hexToRgb(color))
     .reduce(
       (acc, current) => ({
-        r: acc.r + current.r,
-        g: acc.g + current.g,
-        b: acc.b + current.b,
+        r: acc.r + srgbToLinear(current.r),
+        g: acc.g + srgbToLinear(current.g),
+        b: acc.b + srgbToLinear(current.b),
       }),
       { r: 0, g: 0, b: 0 },
     );
   const count = colors.length;
   return rgbToHex({
-    r: Math.round(r / count),
-    g: Math.round(g / count),
-    b: Math.round(b / count),
+    r: Math.round(linearToSrgb(r / count)),
+    g: Math.round(linearToSrgb(g / count)),
+    b: Math.round(linearToSrgb(b / count)),
   });
 };
 
@@ -144,13 +164,14 @@ const buildLayout = (
   }
 
   const alliancesById = new Map(alliances.map((alliance) => [alliance.id, alliance]));
+  const playersById = new Map(players.map((player) => [player.id, player]));
 
   const rawEntries = systems.map((system) => {
     const { x, y } = axialToPixelCoord(system.axial, HEX_SIZE);
-    const ownerSummary = aggregateOwners(system, players, alliances);
+    const ownerSummary = aggregateOwners(system, playersById, alliancesById);
     const { theme, biomeName } = resolveBiomeVisuals(system);
     const matchedAllianceIds = new Set<string>();
-    system.planets.forEach((planet) => {
+    system.planets?.forEach((planet) => {
       if (planet.allianceId && highlightedAllianceIds.has(planet.allianceId)) {
         matchedAllianceIds.add(planet.allianceId);
       }
