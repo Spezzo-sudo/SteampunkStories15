@@ -153,6 +153,7 @@ export const useSmoothPanZoom = (
   useEffect(() => {
     const initialSync = { ...initial };
     sync(initialSync);
+    // The hook intentionally performs this sync only once on mount to align with the initial ref state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
