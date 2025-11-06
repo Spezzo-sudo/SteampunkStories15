@@ -79,6 +79,13 @@ const HexTile: React.FC<HexTileProps> = ({
 
   return (
     <g transform={`translate(${position.x}, ${position.y})`} {...groupProps}>
+      <circle
+        cx={0}
+        cy={0}
+        r={Math.max(22, size * 0.75)}
+        fill="transparent"
+        pointerEvents="all"
+      />
       <defs>
         <linearGradient id={gradTop} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={theme.topHighlight} />
