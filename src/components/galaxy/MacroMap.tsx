@@ -8,6 +8,31 @@ interface MacroMapProps {
   regions: RegionMeta[];
 }
 
+interface RegionLayout {
+  id: string;
+  name: string | null;
+  x: number;
+  y: number;
+  color: string;
+  stroke: string;
+  region: RegionMeta;
+}
+
+interface BackgroundHex {
+  x: number;
+  y: number;
+  parity: number;
+}
+
+interface HexPolygonProps {
+  cx: number;
+  cy: number;
+  size: number;
+  stroke?: string;
+  strokeWidth?: number;
+  fill?: string;
+}
+
 /**
  * Renders the macro-level world map with one clickable hex per region.
  */
@@ -18,8 +43,8 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ regions }) => {
     if (regions.length === 0) {
       return {
         viewBox: '-320 -320 640 640',
-        tiles: [] as Array<RegionLayout>,
-        background: [] as Array<BackgroundHex>,
+        tiles: [] as RegionLayout[],
+        background: [] as BackgroundHex[],
       };
     }
 
@@ -108,6 +133,7 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ regions }) => {
           key={tile.id}
           onClick={() => openRegion(tile.region.RQ, tile.region.RR, tile.region.seed)}
           filter="url(#macro-hex-shadow)"
+          className="transition-colors hover:[&>polygon]:fill-yellow-500/20"
           style={{ cursor: 'pointer' }}
         >
           <HexPolygon cx={tile.x} cy={tile.y} size={MACRO_HEX_SIZE} stroke={tile.stroke} fill={tile.color} strokeWidth={2.5} />
@@ -129,31 +155,6 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ regions }) => {
     </svg>
   );
 };
-
-interface RegionLayout {
-  id: string;
-  name: string | null;
-  x: number;
-  y: number;
-  color: string;
-  stroke: string;
-  region: RegionMeta;
-}
-
-interface BackgroundHex {
-  x: number;
-  y: number;
-  parity: number;
-}
-
-interface HexPolygonProps {
-  cx: number;
-  cy: number;
-  size: number;
-  stroke?: string;
-  strokeWidth?: number;
-  fill?: string;
-}
 
 const HexPolygon: React.FC<HexPolygonProps> = React.memo(
   ({ cx, cy, size, stroke = '#64748b', strokeWidth = 2, fill = 'transparent' }) => {
@@ -185,5 +186,6 @@ const pickRegionStroke = (index: number) => {
   return base;
 };
 
+/** Memoized wrapper for the macro map component. */
 export const MacroMap = React.memo(MacroMapComponent);
 MacroMap.displayName = 'MacroMap';

@@ -7,6 +7,15 @@ interface RegionViewProps {
   region: RegionData;
 }
 
+interface HexPolygonProps {
+  cx: number;
+  cy: number;
+  size: number;
+  stroke?: string;
+  strokeWidth?: number;
+  fill?: string;
+}
+
 /**
  * Visualises the micro-level region layout with exactly 19 tiles.
  */
@@ -64,28 +73,22 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   );
 };
 
-interface HexPolygonProps {
-  cx: number;
-  cy: number;
-  size: number;
-  stroke?: string;
-  fill?: string;
-}
+const HexPolygon: React.FC<HexPolygonProps> = React.memo(
+  ({ cx, cy, size, stroke = '#1f2937', strokeWidth = 1.5, fill = '#94a3b8' }) => {
+    const points = useMemo(() => {
+      const vertices: string[] = [];
+      for (let index = 0; index < 6; index += 1) {
+        const angle = ((60 * index - 30) * Math.PI) / 180;
+        const px = cx + size * Math.cos(angle);
+        const py = cy + size * Math.sin(angle);
+        vertices.push(`${px},${py}`);
+      }
+      return vertices.join(' ');
+    }, [cx, cy, size]);
 
-const HexPolygon: React.FC<HexPolygonProps> = React.memo(({ cx, cy, size, stroke = '#1f2937', fill = '#94a3b8' }) => {
-  const points = useMemo(() => {
-    const vertices: string[] = [];
-    for (let index = 0; index < 6; index += 1) {
-      const angle = ((60 * index - 30) * Math.PI) / 180;
-      const px = cx + size * Math.cos(angle);
-      const py = cy + size * Math.sin(angle);
-      vertices.push(`${px},${py}`);
-    }
-    return vertices.join(' ');
-  }, [cx, cy, size]);
-
-  return <polygon points={points} stroke={stroke} fill={fill} strokeWidth={1.5} />;
-});
+    return <polygon points={points} stroke={stroke} fill={fill} strokeWidth={strokeWidth} />;
+  },
+);
 HexPolygon.displayName = 'RegionHex';
 
 const biomeFill = (biome: string) => {
@@ -111,5 +114,6 @@ const biomeFill = (biome: string) => {
   }
 };
 
+/** Memoized wrapper for the 19-tile region renderer. */
 export const RegionView = React.memo(RegionViewComponent);
 RegionView.displayName = 'RegionView';
