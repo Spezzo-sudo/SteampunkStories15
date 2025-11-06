@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { axialToPixel } from '@/lib/hex';
+import { SQRT3, axialToPixel } from '@/lib/hex';
 import type { TerrainTile } from '@/components/galaxy/terrain/HexTerrainCanvas.types';
 
 export interface TerrainTile {
@@ -60,8 +60,15 @@ const HexTerrainCanvas: React.FC<HexTerrainCanvasProps> = ({ tiles, width, heigh
   const preparedTiles = useMemo(
     () =>
       tiles.map((tile) => {
-        const { x, y } = axialToPixel({ q: tile.q, r: tile.r }, size);
-        return { ...tile, x, y };
+        const q = Number(tile.q);
+        const r = Number(tile.r);
+        const { x, y } = axialToPixel({ q, r }, size);
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+          return { ...tile, x, y };
+        }
+        const fallbackX = size * (SQRT3 * q + (SQRT3 / 2) * r);
+        const fallbackY = size * ((3 / 2) * r);
+        return { ...tile, x: fallbackX, y: fallbackY };
       }),
     [size, tiles],
   );
@@ -93,6 +100,9 @@ const HexTerrainCanvas: React.FC<HexTerrainCanvasProps> = ({ tiles, width, heigh
     const spriteHeight = size * 2;
 
     preparedTiles.forEach((tile) => {
+      if (!Number.isFinite(tile.x) || !Number.isFinite(tile.y)) {
+        return;
+      }
       if (tile.x < minX || tile.x > maxX || tile.y < minY || tile.y > maxY) {
         return;
       }
