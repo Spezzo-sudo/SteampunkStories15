@@ -5,7 +5,12 @@ import { RegionTileTable } from '@/components/galaxy/RegionTileTable';
 import type { Axial, RegionData, TileData } from '@/types/map';
 import { useAllianceStore } from '@/store/allianceStore';
 import { applyAlpha } from '@/lib/color';
-import { aStarPath, alliancePenalty } from '@/lib/pathfinding';
+import {
+  alliancePenalty,
+  findRegionPath,
+  type PathFailureReason,
+  type PathfindingResult,
+} from '@/lib/pathfinding';
 
 interface RegionViewProps {
   region: RegionData;
@@ -22,6 +27,45 @@ interface HexPolygonProps {
 
 type SelectionMode = 'inspect' | 'start' | 'target';
 type AllianceFilter = 'all' | 'neutral' | string;
+
+type BannerTone = 'info' | 'success' | 'warning' | 'danger';
+
+interface BannerState {
+  tone: BannerTone;
+  message: string;
+}
+
+const neighborOffsets: Axial[] = [
+  { q: 1, r: 0 },
+  { q: 1, r: -1 },
+  { q: 0, r: -1 },
+  { q: -1, r: 0 },
+  { q: -1, r: 1 },
+  { q: 0, r: 1 },
+];
+
+const failureMessages: Record<PathFailureReason, string> = {
+  'start-outside': 'Startpunkt liegt außerhalb der Region.',
+  'start-blocked': 'Startpunkt ist blockiert.',
+  'goal-outside': 'Ziel liegt außerhalb der Region.',
+  'goal-blocked': 'Ziel ist blockiert.',
+  unreachable: 'Kein Pfad – der Weg ist versperrt.',
+};
+
+const failureTones: Record<PathFailureReason, BannerTone> = {
+  'start-outside': 'warning',
+  'start-blocked': 'danger',
+  'goal-outside': 'warning',
+  'goal-blocked': 'danger',
+  unreachable: 'warning',
+};
+
+const toneClasses: Record<BannerTone, string> = {
+  info: 'border-cyan-500/40 bg-cyan-900/30 text-cyan-100',
+  success: 'border-emerald-500/40 bg-emerald-900/30 text-emerald-100',
+  warning: 'border-amber-500/40 bg-amber-900/30 text-amber-100',
+  danger: 'border-rose-500/40 bg-rose-900/30 text-rose-100',
+};
 
 const selectionButtonClass =
   'rounded-lg border border-yellow-600/40 bg-slate-900/60 px-3 py-1.5 text-xs uppercase tracking-wide text-yellow-100 transition hover:border-yellow-400/50 hover:bg-yellow-500/10';
@@ -43,9 +87,19 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   const [targetTile, setTargetTile] = useState<TileData | null>(null);
   const [mode, setMode] = useState<SelectionMode>('inspect');
   const [activeAllianceFilter, setActiveAllianceFilter] = useState<AllianceFilter>('all');
+  const [banner, setBanner] = useState<BannerState | null>(null);
   const alliances = useAllianceStore((state) => state.alliances);
   const initializeAlliances = useAllianceStore((state) => state.initialize);
   const myAllianceId = useAllianceStore((state) => state.myAllianceId);
+  const traversalCost = useMemo(() => alliancePenalty(myAllianceId), [myAllianceId]);
+  const numberFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat('de-DE', {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      }),
+    [],
+  );
 
   useEffect(() => {
     void initializeAlliances();
@@ -56,6 +110,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     setStartTile(null);
     setTargetTile(null);
     setMode('inspect');
+    setBanner(null);
   }, [region.regionId]);
 
   const alliancesById = useMemo(
@@ -109,6 +164,12 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
 
   const filteredTiles = useMemo(() => tiles.filter((tile) => matchesAllianceFilter(tile)), [matchesAllianceFilter, tiles]);
 
+  const tileLookup = useMemo(() => {
+    const map = new Map<string, TileData>();
+    tiles.forEach((tile) => map.set(`${tile.q}_${tile.r}`, tile));
+    return map;
+  }, [tiles]);
+
   const filterLabel = useMemo(() => {
     if (activeAllianceFilter === 'all') {
       return 'Alle Hexfelder';
@@ -130,17 +191,80 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     setSelectedTile(tile);
   }, []);
 
-  const assignStart = useCallback((tile: TileData) => {
-    setStartTile(tile);
-    setSelectedTile(tile);
-    setMode('inspect');
-  }, []);
+  const findReachableNeighbor = useCallback(
+    (tile: TileData, start: TileData | null) => {
+      const options: { candidate: TileData; cost: number }[] = [];
+      neighborOffsets.forEach((offset) => {
+        const candidate = tileLookup.get(`${tile.q + offset.q}_${tile.r + offset.r}`);
+        if (candidate?.settleable) {
+          const cost = traversalCost(candidate);
+          if (Number.isFinite(cost)) {
+            options.push({ candidate, cost });
+          }
+        }
+      });
+      if (options.length === 0) {
+        return null;
+      }
+      options.sort((a, b) => a.cost - b.cost);
+      if (!start) {
+        return options[0].candidate;
+      }
+      for (const option of options) {
+        const candidateResult = findRegionPath(
+          region,
+          { q: start.q, r: start.r },
+          { q: option.candidate.q, r: option.candidate.r },
+          traversalCost,
+        );
+        if (candidateResult.status === 'success') {
+          return option.candidate;
+        }
+      }
+      return null;
+    },
+    [region, tileLookup, traversalCost],
+  );
 
-  const assignTarget = useCallback((tile: TileData) => {
-    setTargetTile(tile);
-    setSelectedTile(tile);
-    setMode('inspect');
-  }, []);
+  const assignStart = useCallback(
+    (tile: TileData) => {
+      setStartTile(tile);
+      setSelectedTile(tile);
+      setMode('inspect');
+      setBanner({ tone: 'info', message: `Startpunkt gesetzt: (${tile.q}, ${tile.r}).` });
+    },
+    [],
+  );
+
+  const assignTarget = useCallback(
+    (tile: TileData) => {
+      if (!tile.settleable) {
+        const fallback = findReachableNeighbor(tile, startTile);
+        if (fallback) {
+          setTargetTile(fallback);
+          setSelectedTile(fallback);
+          setBanner({
+            tone: 'warning',
+            message: `Ziel (${tile.q}, ${tile.r}) ist blockiert – vorgeschlagenes Ausweichhex (${fallback.q}, ${fallback.r}).`,
+          });
+        } else {
+          setTargetTile(null);
+          setSelectedTile(tile);
+          setBanner({
+            tone: 'danger',
+            message: `Ziel (${tile.q}, ${tile.r}) ist blockiert und hat keine erreichbare Nachbarzelle.`,
+          });
+        }
+        setMode('inspect');
+        return;
+      }
+      setTargetTile(tile);
+      setSelectedTile(tile);
+      setMode('inspect');
+      setBanner({ tone: 'success', message: `Ziel gesetzt: (${tile.q}, ${tile.r}).` });
+    },
+    [findReachableNeighbor, startTile],
+  );
 
   const handleTileInteraction = useCallback(
     (tile: TileData) => {
@@ -157,18 +281,19 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     [assignStart, assignTarget, handleInspect, mode],
   );
 
-  const pathCoordinates = useMemo(() => {
+  const pathResult = useMemo<PathfindingResult | null>(() => {
     if (!startTile || !targetTile) {
-      return [] as Axial[];
+      return null;
     }
-    const result = aStarPath(
+    return findRegionPath(
       region,
       { q: startTile.q, r: startTile.r },
       { q: targetTile.q, r: targetTile.r },
-      alliancePenalty(myAllianceId),
+      traversalCost,
     );
-    return result ?? [];
-  }, [region, startTile, targetTile, myAllianceId]);
+  }, [region, startTile, targetTile, traversalCost]);
+
+  const pathCoordinates = pathResult?.status === 'success' ? pathResult.path : [];
 
   const pathPointString = useMemo(() =>
     pathCoordinates
@@ -184,6 +309,53 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   const selectedTileId = selectedTile ? `${selectedTile.q}_${selectedTile.r}` : null;
   const startTileId = startTile ? `${startTile.q}_${startTile.r}` : null;
   const targetTileId = targetTile ? `${targetTile.q}_${targetTile.r}` : null;
+
+  const modeHint = useMemo(() => {
+    if (mode === 'start') {
+      return 'Modus: Startpunkt setzen – klicke ein Hex oder nutze Enter.';
+    }
+    if (mode === 'target') {
+      return 'Modus: Ziel setzen – klicke ein Hex oder nutze Enter.';
+    }
+    if (startTile && targetTile) {
+      return 'Pfad angezeigt – klicke ein Hex für Details.';
+    }
+    if (startTile) {
+      return 'Startpunkt fixiert – wähle ein Zielhex.';
+    }
+    if (targetTile) {
+      return 'Ziel ist gewählt – setze noch einen Startpunkt.';
+    }
+    return 'Erkunden – lege Start- und Zielhex fest, um einen Pfad zu berechnen.';
+  }, [mode, startTile, targetTile]);
+
+  const pathStatus = useMemo(() => {
+    if (!startTile && !targetTile) {
+      return { tone: 'info' as BannerTone, message: 'Wähle einen Startpunkt, um die Route zu planen.' };
+    }
+    if (startTile && !targetTile) {
+      return { tone: 'info' as BannerTone, message: 'Startpunkt fixiert – Zielhex auswählen.' };
+    }
+    if (!startTile && targetTile) {
+      return { tone: 'warning' as BannerTone, message: 'Ziel gewählt – setze zuerst einen Startpunkt.' };
+    }
+    if (!pathResult) {
+      return null;
+    }
+    if (pathResult.status === 'success') {
+      const steps = Math.max(pathResult.path.length - 1, 0);
+      const formattedCost = numberFormatter.format(pathResult.cost);
+      const stepLabel = steps === 1 ? 'Sprung' : 'Sprünge';
+      return {
+        tone: 'success' as BannerTone,
+        message: `Pfad gefunden – ${steps} ${stepLabel} • Gesamtkosten ${formattedCost}`,
+      };
+    }
+    return {
+      tone: failureTones[pathResult.reason],
+      message: failureMessages[pathResult.reason],
+    };
+  }, [numberFormatter, pathResult, startTile, targetTile]);
 
   const describeTile = useCallback(
     (tile: TileData) => {
@@ -233,6 +405,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
                 setStartTile(null);
                 setTargetTile(null);
                 setMode('inspect');
+                setBanner(null);
               }}
             >
               Pfad zurücksetzen
@@ -278,8 +451,19 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
             })}
           </div>
         </div>
+        <div className="flex flex-wrap gap-2">
+          <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wide ${toneClasses.info}`}>
+            {modeHint}
+          </span>
+          {banner ? (
+            <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wide ${toneClasses[banner.tone]}`}>
+              {banner.message}
+            </span>
+          ) : null}
+        </div>
         <div className="flex-1 overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-900/60 shadow-inner">
-          <svg role="presentation" className="h-full w-full" viewBox="-140 -140 280 280" preserveAspectRatio="xMidYMid meet">
+          <div className="relative h-full w-full">
+            <svg role="presentation" className="h-full w-full" viewBox="-140 -140 280 280" preserveAspectRatio="xMidYMid meet">
             <defs>
               <radialGradient id="region-center" cx="50%" cy="48%" r="60%">
                 <stop offset="0%" stopColor="rgba(34,211,238,0.55)" />
@@ -356,7 +540,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
                   role="button"
                   aria-label={describeTile(tile)}
                   aria-pressed={isSelected}
-                  style={{ cursor: 'pointer', opacity: isDimmed ? 0.32 : 1 }}
+                  style={{ cursor: 'pointer', opacity: isDimmed ? 0.32 : 1, transition: 'opacity 180ms ease' }}
                 >
                   <HexPolygon
                     cx={x}
@@ -432,6 +616,42 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
               );
             })}
           </svg>
+            {pathStatus ? (
+              <div
+                className={`pointer-events-none absolute left-4 top-4 flex max-w-xs rounded-full border px-4 py-1.5 text-[0.65rem] uppercase tracking-wide ${toneClasses[pathStatus.tone]}`}
+              >
+                {pathStatus.message}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-800/40 bg-slate-950/40 p-3 text-[0.65rem] uppercase tracking-wide text-slate-200">
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-3 rounded-full border border-emerald-400/70 bg-emerald-500/50" aria-hidden="true" />
+            <span>Besiedelbar</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span
+              className="h-3 w-3 rounded-full border border-rose-500/60"
+              style={{
+                backgroundImage: 'repeating-linear-gradient(45deg, rgba(248,113,113,0.5), rgba(248,113,113,0.5) 2px, rgba(127,29,29,0.2) 2px, rgba(127,29,29,0.2) 4px)',
+              }}
+              aria-hidden="true"
+            />
+            <span>Unbewohnbar</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-6 rounded-full border border-cyan-400/70 bg-cyan-500/40" aria-hidden="true" />
+            <span>Pfad</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-6 rounded-full border border-yellow-400/70 bg-yellow-500/30" aria-hidden="true" />
+            <span>Start/Ziel-Markierung</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-3 rounded-full border border-slate-200/40 bg-slate-200/60" aria-hidden="true" />
+            <span>Bandenfarbe</span>
+          </div>
         </div>
         {selectedTile ? (
           <div className="rounded-2xl border border-yellow-800/30 bg-black/40 p-4 text-sm text-slate-100">

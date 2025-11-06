@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { axialDisk } from '@/lib/hex';
 import { REGION_RADIUS } from '@/constants/map';
 import type { RegionData, TileData } from '@/types/map';
-import { aStarPath, alliancePenalty, defaultCost } from '@/lib/pathfinding';
+import {
+  aStarPath,
+  alliancePenalty,
+  defaultCost,
+  findRegionPath,
+  type PathfindingFailure,
+} from '@/lib/pathfinding';
 
 const buildRegion = (overrides: Record<string, Partial<TileData>> = {}): RegionData => {
   const tiles: TileData[] = axialDisk(REGION_RADIUS).map(({ q, r }) => ({
@@ -72,5 +78,69 @@ describe('aStarPath', () => {
     });
     const result = aStarPath(region, { q: 0, r: 0 }, { q: 1, r: -1 });
     expect(result).toBeNull();
+  });
+});
+
+describe('findRegionPath', () => {
+  it('reports cost metadata for a valid path', () => {
+    const region = buildRegion();
+    const result = findRegionPath(region, { q: 0, r: 0 }, { q: 0, r: -2 });
+    expect(result.status).toBe('success');
+    if (result.status === 'success') {
+      expect(result.path.length).toBeGreaterThan(0);
+      expect(result.cost).toBeGreaterThan(0);
+      expect(result.path[0]).toEqual({ q: 0, r: 0 });
+    }
+  });
+
+  it('flags blocked goals with a dedicated failure reason', () => {
+    const region = buildRegion({ '0,-2': { settleable: false } });
+    const result = findRegionPath(region, { q: 0, r: 0 }, { q: 0, r: -2 });
+    expect(result.status).toBe('failure');
+    if (result.status === 'failure') {
+      expect(result.reason).toBe('goal-blocked');
+    }
+  });
+
+  it('flags blocked start tiles with a dedicated failure reason', () => {
+    const region = buildRegion({ '0,0': { settleable: false } });
+    const result = findRegionPath(region, { q: 0, r: 0 }, { q: 0, r: -2 });
+    expect(result.status).toBe('failure');
+    if (result.status === 'failure') {
+      expect(result.reason).toBe('start-blocked');
+    }
+  });
+
+  it('distinguishes between unreachable paths and invalid coordinates', () => {
+    const region = buildRegion({
+      '0,1': { settleable: false },
+      '1,0': { settleable: false },
+      '1,-1': { settleable: false },
+      '0,-1': { settleable: false },
+      '-1,0': { settleable: false },
+      '-1,1': { settleable: false },
+    });
+    const unreachable = findRegionPath(region, { q: 0, r: 0 }, { q: 0, r: 2 });
+    expect(unreachable.status).toBe('failure');
+    if (unreachable.status === 'failure') {
+      expect(unreachable.reason).toBe('unreachable');
+    }
+
+    const outside = findRegionPath(region, { q: 0, r: 0 }, { q: 5, r: 5 });
+    expect(outside.status).toBe('failure');
+    if (outside.status === 'failure') {
+      expect(outside.reason).toBe('goal-outside');
+    }
+  });
+
+  it('exposes failure type helpers for type narrowing', () => {
+    const region = buildRegion({ '0,0': { settleable: false } });
+    const result = findRegionPath(region, { q: 0, r: 0 }, { q: 1, r: 0 });
+    if (result.status === 'failure') {
+      const failure: PathfindingFailure = result;
+      expect(failure.reason).toBe('start-blocked');
+    } else {
+      throw new Error('Expected failure result');
+    }
   });
 });
