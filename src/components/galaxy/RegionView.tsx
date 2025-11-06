@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MICRO_HEX_SIZE, REGION_RADIUS } from '@/constants/map';
 import { axialDisk, axialToPixel } from '@/lib/hex';
 import { RegionTileTable } from '@/components/galaxy/RegionTileTable';
@@ -11,6 +11,12 @@ import {
   type PathFailureReason,
   type PathfindingResult,
 } from '@/lib/pathfinding';
+import { ConvoyActionModal } from '@/components/galaxy/ConvoyActionModal';
+import type { Convoy, Unit } from '@/types/convoy';
+import { ActionType } from '@/types/convoy';
+import { createRegionUnits } from '@/lib/mockUnits';
+import { runConvoy } from '@/lib/movement/runner';
+import { stepCost } from '@/lib/movement/costs';
 
 interface RegionViewProps {
   region: RegionData;
@@ -64,6 +70,13 @@ const failureMessages: Record<PathFailureReason, string> = {
   unreachable: 'Kein Pfad – der Weg ist versperrt.',
 };
 
+const actionLabels: Record<ActionType, string> = {
+  [ActionType.MOVE]: 'Bewegen',
+  [ActionType.COLONIZE]: 'Kolonisieren',
+  [ActionType.SCOUT]: 'Spähen',
+  [ActionType.ATTACK]: 'Angreifen',
+};
+
 const failureTones: Record<PathFailureReason, BannerTone> = {
   'start-outside': 'warning',
   'start-blocked': 'danger',
@@ -101,6 +114,17 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   const [mode, setMode] = useState<SelectionMode>('inspect');
   const [activeAllianceFilter, setActiveAllianceFilter] = useState<AllianceFilter>('all');
   const [banner, setBanner] = useState<BannerState | null>(null);
+  const [units, setUnits] = useState<Unit[]>(() => createRegionUnits(region));
+  const [convoys, setConvoys] = useState<Convoy[]>([]);
+  const runningConvoys = useRef<Set<string>>(new Set());
+  const [pendingConvoy, setPendingConvoy] = useState<{ start: TileData; target: TileData } | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isTableOpen, setIsTableOpen] = useState(true);
+  const [mapZoom, setMapZoom] = useState(1.1);
+  const [toasts, setToasts] = useState<{ id: string; tone: BannerTone; message: string }[]>([]);
+  const [homeTile, setHomeTile] = useState<TileData | null>(null);
+  const [hoveredTileId, setHoveredTileId] = useState<string | null>(null);
+  const [convoyPressure, setConvoyPressure] = useState<Record<string, number>>({});
   const alliances = useAllianceStore((state) => state.alliances);
   const initializeAlliances = useAllianceStore((state) => state.initialize);
   const myAllianceId = useAllianceStore((state) => state.myAllianceId);
@@ -124,7 +148,22 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     setTargetTile(null);
     setMode('inspect');
     setBanner(null);
-  }, [region.regionId]);
+    const roster = createRegionUnits(region);
+    setUnits(roster);
+    setConvoys([]);
+    runningConvoys.current.clear();
+    setPendingConvoy(null);
+    setToasts([]);
+    setConvoyPressure({});
+    setIsTableOpen(true);
+    setMapZoom(1.1);
+    const defaultHome =
+      region.tiles.find((tile) => tile.units?.some((id) => id.includes('frachter'))) ??
+      region.tiles.find((tile) => tile.units?.length) ??
+      region.tiles.find((tile) => tile.settleable) ??
+      null;
+    setHomeTile(defaultHome);
+  }, [region]);
 
   const tilePixelEntries = useMemo<PositionedAxial[]>(
     () =>
@@ -134,6 +173,115 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
       }),
     [tiles],
   );
+
+  const unitsByTile = useMemo(() => {
+    const map = new Map<string, Unit[]>();
+    units.forEach((unit) => {
+      const key = `${unit.location.q}_${unit.location.r}`;
+      const bucket = map.get(key);
+      if (bucket) {
+        bucket.push(unit);
+      } else {
+        map.set(key, [unit]);
+      }
+    });
+    return map;
+  }, [units]);
+
+  useEffect(() => {
+    if (!pendingConvoy) {
+      setIsModalOpen(false);
+      return;
+    }
+    const available = unitsByTile.get(`${pendingConvoy.start.q}_${pendingConvoy.start.r}`) ?? [];
+    if (available.length === 0) {
+      setBanner({ tone: 'warning', message: 'Keine Einheiten am Startpunkt verfügbar.' });
+      setPendingConvoy(null);
+      return;
+    }
+    setIsModalOpen(true);
+  }, [pendingConvoy, unitsByTile]);
+
+  useEffect(() => {
+    convoys.forEach((convoy) => {
+      if (convoy.state !== 'queued' || runningConvoys.current.has(convoy.id)) {
+        return;
+      }
+      const convoyUnits = units.filter((unit) => convoy.unitIds.includes(unit.id));
+      if (convoyUnits.length === 0) {
+        setConvoys((previous) =>
+          previous.map((entry) => (entry.id === convoy.id ? { ...entry, state: 'failed' } : entry)),
+        );
+        setConvoyPressure((previous) => {
+          const next = { ...previous };
+          delete next[convoy.id];
+          return next;
+        });
+        return;
+      }
+      runningConvoys.current.add(convoy.id);
+      void runConvoy(
+        convoy,
+        convoyUnits,
+        (axial) => axialToPixel(axial, MICRO_HEX_SIZE),
+        (axial) => {
+          setUnits((previous) =>
+            previous.map((unit) =>
+              convoy.unitIds.includes(unit.id)
+                ? {
+                    ...unit,
+                    location: { ...unit.location, q: axial.q, r: axial.r },
+                  }
+                : unit,
+            ),
+          );
+          const tile = tileLookup.get(`${axial.q}_${axial.r}`);
+          if (tile) {
+            const cost = stepCost(tile, convoyUnits);
+            if (Number.isFinite(cost)) {
+              setConvoyPressure((previous) => ({
+                ...previous,
+                [convoy.id]: Math.max(0, (previous[convoy.id] ?? convoy.pressureTankMax) - cost),
+              }));
+            }
+          }
+        },
+        (state) => {
+          setConvoys((previous) =>
+            previous.map((entry) => (entry.id === convoy.id ? { ...entry, state } : entry)),
+          );
+        },
+        (ok) => {
+          runningConvoys.current.delete(convoy.id);
+          setConvoys((previous) =>
+            previous.map((entry) =>
+              entry.id === convoy.id ? { ...entry, state: ok ? 'done' : 'failed' } : entry,
+            ),
+          );
+          setConvoyPressure((previous) => {
+            const next = { ...previous };
+            delete next[convoy.id];
+            return next;
+          });
+          const tone: BannerTone = ok ? 'success' : 'danger';
+          const message = ok
+            ? `${actionLabels[convoy.action]} abgeschlossen – Hex (${convoy.target.q}, ${convoy.target.r}).`
+            : `Konvoi fehlgeschlagen – Hex (${convoy.target.q}, ${convoy.target.r}).`;
+          setToasts((previous) => [...previous, { id: `${convoy.id}-${Date.now()}`, tone, message }]);
+        },
+      );
+    });
+  }, [convoys, tileLookup, units]);
+
+  useEffect(() => {
+    if (toasts.length === 0) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      setToasts((previous) => previous.slice(1));
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [toasts]);
 
   const tilePositionLookup = useMemo(() => {
     const lookup = new Map<string, PositionedAxial>();
@@ -363,8 +511,11 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
       setSelectedTile(tile);
       setMode('inspect');
       setBanner({ tone: 'info', message: `Startpunkt gesetzt: (${tile.q}, ${tile.r}).` });
+      if (targetTile) {
+        setPendingConvoy({ start: tile, target: targetTile });
+      }
     },
-    [],
+    [targetTile],
   );
 
   const assignTarget = useCallback(
@@ -393,6 +544,9 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
       setSelectedTile(tile);
       setMode('inspect');
       setBanner({ tone: 'success', message: `Ziel gesetzt: (${tile.q}, ${tile.r}).` });
+      if (startTile) {
+        setPendingConvoy({ start: startTile, target: tile });
+      }
     },
     [findReachableNeighbor, startTile],
   );
@@ -411,6 +565,30 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     },
     [assignStart, assignTarget, handleInspect, mode],
   );
+
+  const handleConvoyConfirm = useCallback(
+    (convoy: Convoy, convoyUnits: Unit[]) => {
+      setConvoys((previous) => [...previous, convoy]);
+      setConvoyPressure((previous) => ({ ...previous, [convoy.id]: convoy.pressureTankMax }));
+      setPendingConvoy(null);
+      setIsModalOpen(false);
+      setBanner({
+        tone: 'success',
+        message: `Konvoi gestartet – ${actionLabels[convoy.action]} mit ${convoyUnits.length} Einheiten.`,
+      });
+    },
+    [],
+  );
+
+  const handleHomeFocus = useCallback(() => {
+    if (!homeTile) {
+      return;
+    }
+    setSelectedTile(homeTile);
+    setStartTile(homeTile);
+    setMode('inspect');
+    setBanner({ tone: 'info', message: `Heimathafen fokussiert (${homeTile.q}, ${homeTile.r}).` });
+  }, [homeTile]);
 
   const pathResult = useMemo<PathfindingResult | null>(() => {
     if (!startTile || !targetTile) {
@@ -441,11 +619,34 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     [pathCoordinates, tilePositionLookup],
   );
 
+  const convoyPathPolylines = useMemo(
+    () =>
+      convoys.map((convoy) => ({
+        id: convoy.id,
+        state: convoy.state,
+        points: convoy.path
+          .map((coord) => {
+            const cached = tilePositionLookup.get(`${coord.q}_${coord.r}`);
+            const { x, y } = cached ?? axialToPixel({ q: coord.q, r: coord.r }, MICRO_HEX_SIZE);
+            return `${x},${y}`;
+          })
+          .join(' '),
+      })),
+    [convoys, tilePositionLookup],
+  );
+
   const pathKeySet = useMemo(() => new Set(pathCoordinates.map((coord) => `${coord.q}_${coord.r}`)), [pathCoordinates]);
 
   const selectedTileId = selectedTile ? `${selectedTile.q}_${selectedTile.r}` : null;
   const startTileId = startTile ? `${startTile.q}_${startTile.r}` : null;
   const targetTileId = targetTile ? `${targetTile.q}_${targetTile.r}` : null;
+
+  const modalUnits = useMemo(() => {
+    if (!pendingConvoy) {
+      return [] as Unit[];
+    }
+    return unitsByTile.get(`${pendingConvoy.start.q}_${pendingConvoy.start.r}`) ?? [];
+  }, [pendingConvoy, unitsByTile]);
 
   const modeHint = useMemo(() => {
     if (mode === 'start') {
@@ -512,279 +713,352 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     [alliancesById],
   );
 
-  const selectedAlliance = selectedTile?.allianceId ? alliancesById.get(selectedTile.allianceId) : undefined;
-
   return (
-    <div className="flex h-full flex-col gap-4 p-4 md:flex-row">
-      <div className="flex flex-1 flex-col gap-3">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap gap-2">
+    <div className="relative flex h-full flex-col overflow-hidden bg-slate-950/80">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-yellow-500/20 bg-black/40 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className={`${selectionButtonClass} ${mode === 'start' ? 'border-cyan-300/70 text-cyan-100' : ''}`}
+            onClick={() => setMode(mode === 'start' ? 'inspect' : 'start')}
+            aria-pressed={mode === 'start'}
+          >
+            {mode === 'start' ? 'Startpunkt setzen …' : 'Startpunkt wählen'}
+          </button>
+          <button
+            type="button"
+            className={`${selectionButtonClass} ${mode === 'target' ? 'border-amber-300/70 text-amber-100' : ''}`}
+            onClick={() => setMode(mode === 'target' ? 'inspect' : 'target')}
+            aria-pressed={mode === 'target'}
+          >
+            {mode === 'target' ? 'Ziel setzen …' : 'Ziel wählen'}
+          </button>
+          <button
+            type="button"
+            className={`${selectionButtonClass} border-rose-500/40 text-rose-100 hover:border-rose-400/60 hover:bg-rose-500/10`}
+            onClick={() => {
+              setStartTile(null);
+              setTargetTile(null);
+              setSelectedTile(null);
+              setPendingConvoy(null);
+              setBanner({ tone: 'info', message: 'Pfadplanung zurückgesetzt.' });
+            }}
+          >
+            Zurücksetzen
+          </button>
+          {allianceOptions.map((option) => (
             <button
+              key={option.id}
               type="button"
-              className={`${selectionButtonClass} ${mode === 'start' ? 'border-cyan-300/70 text-cyan-100' : ''}`}
-              onClick={() => setMode(mode === 'start' ? 'inspect' : 'start')}
-              aria-pressed={mode === 'start'}
-            >
-              {mode === 'start' ? 'Startpunkt setzen …' : 'Startpunkt wählen'}
-            </button>
-            <button
-              type="button"
-              className={`${selectionButtonClass} ${mode === 'target' ? 'border-amber-300/70 text-amber-100' : ''}`}
-              onClick={() => setMode(mode === 'target' ? 'inspect' : 'target')}
-              aria-pressed={mode === 'target'}
-            >
-              {mode === 'target' ? 'Ziel setzen …' : 'Ziel wählen'}
-            </button>
-            <button
-              type="button"
-              className={`${selectionButtonClass} border-rose-500/40 text-rose-100 hover:border-rose-400/60 hover:bg-rose-500/10`}
-              onClick={() => {
-                setStartTile(null);
-                setTargetTile(null);
-                setMode('inspect');
-                setBanner(null);
+              className={`${filterButtonClass} ${
+                activeAllianceFilter === option.id ? 'border-yellow-400/60 bg-yellow-500/10 text-yellow-100' : ''
+              }`}
+              onClick={() => handleAllianceFilterChange(option.id)}
+              style={{
+                borderColor: option.color ? applyAlpha(option.color, 0.6) : undefined,
+                backgroundColor: option.color ? applyAlpha(option.color, 0.12) : undefined,
               }}
             >
-              Pfad zurücksetzen
+              {option.label}
+              <span className="ml-1 text-[0.6rem] text-yellow-100/70">({option.count})</span>
             </button>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className={`${filterButtonClass} ${!filterIsActive ? 'border-yellow-400/60 text-yellow-100' : ''}`}
-              onClick={() => setActiveAllianceFilter('all')}
-              aria-pressed={!filterIsActive}
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-[0.65rem] uppercase tracking-wide text-yellow-200">
+            Zoom
+            <input
+              type="range"
+              min="0.8"
+              max="1.6"
+              step="0.05"
+              value={mapZoom}
+              onChange={(event) => setMapZoom(Number(event.target.value))}
+              className="h-1 w-32 accent-yellow-400"
+            />
+          </label>
+          <button
+            type="button"
+            className={`${selectionButtonClass} border-cyan-400/60 text-cyan-100`}
+            onClick={handleHomeFocus}
+          >
+            Zu Heimat
+          </button>
+          <button
+            type="button"
+            className={`${selectionButtonClass} border-yellow-500/40 text-yellow-100`}
+            onClick={() => setIsTableOpen((previous) => !previous)}
+          >
+            {isTableOpen ? 'Liste ausblenden' : 'Liste einblenden'}
+          </button>
+        </div>
+      </div>
+      <div className="flex flex-1 overflow-hidden">
+        <div className="relative flex-[3] overflow-hidden">
+          <div className="absolute inset-0">
+            <svg
+              viewBox="-380 -380 760 760"
+              className="h-full w-full"
+              role="presentation"
+              aria-hidden="true"
             >
-              Alle Banden
-            </button>
-            {allianceOptions.map((option) => {
-              const isActive = activeAllianceFilter === option.id;
-              const indicatorColor = option.color ?? '#cbd5f5';
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  className={`${filterButtonClass} ${isActive ? 'border-yellow-400/70 text-yellow-100' : ''}`}
-                  style={{
-                    borderColor: applyAlpha(indicatorColor, isActive ? 0.75 : 0.35),
-                    background: isActive ? applyAlpha(indicatorColor, 0.18) : undefined,
-                  }}
-                  onClick={() => handleAllianceFilterChange(option.id)}
-                  aria-pressed={isActive}
+              <defs>
+                <radialGradient id="region-center" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="rgba(248,250,252,0.1)" />
+                  <stop offset="100%" stopColor="rgba(15,23,42,0.1)" />
+                </radialGradient>
+                <filter id="region-hex-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                  <feDropShadow dx="0" dy="1" stdDeviation="2" floodColor="rgba(15,23,42,0.75)" />
+                </filter>
+                <pattern
+                  id="region-unsettleable-hatch"
+                  width="6"
+                  height="6"
+                  patternUnits="userSpaceOnUse"
+                  patternTransform="rotate(45)"
                 >
-                  <span className="flex items-center gap-2">
-                    <span
-                      className="h-2.5 w-2.5 rounded-full"
-                      style={{ backgroundColor: indicatorColor }}
-                      aria-hidden="true"
-                    />
-                    <span>{option.label}</span>
-                    <span className="ml-1 rounded bg-black/40 px-1 py-[1px] text-[0.6rem] text-yellow-100/80">
-                      {option.count}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wide ${toneClasses.info}`}>
-            {modeHint}
-          </span>
-          {banner ? (
-            <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wide ${toneClasses[banner.tone]}`}>
-              {banner.message}
-            </span>
-          ) : null}
-        </div>
-        <div className="flex-1 overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-900/60 shadow-inner">
-          <div className="relative h-full w-full">
-            <svg role="presentation" className="h-full w-full" viewBox="-140 -140 280 280" preserveAspectRatio="xMidYMid meet">
-            <defs>
-              <radialGradient id="region-center" cx="50%" cy="48%" r="60%">
-                <stop offset="0%" stopColor="rgba(34,211,238,0.55)" />
-                <stop offset="65%" stopColor="rgba(56,189,248,0.15)" />
-                <stop offset="100%" stopColor="rgba(15,23,42,0)" />
-              </radialGradient>
-              <filter id="region-hex-shadow" x="-30%" y="-30%" width="160%" height="160%">
-                <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="rgba(15,23,42,0.8)" floodOpacity="0.5" />
-              </filter>
-              <pattern
-                id="region-unsettleable-hatch"
-                width="6"
-                height="6"
-                patternUnits="userSpaceOnUse"
-                patternTransform="rotate(45)"
-              >
-                <rect width="6" height="6" fill="rgba(127,29,29,0.12)" />
-                <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(248,113,113,0.55)" strokeWidth="2" />
-              </pattern>
-            </defs>
-            <rect x="-600" y="-600" width="1200" height="1200" fill="#020617" />
-            <circle cx={0} cy={0} r={REGION_RADIUS * MICRO_HEX_SIZE * 2.8} fill="url(#region-center)" />
-            {staticLayer ? (
-              <image
-                href={staticLayer.href}
-                x={staticLayer.origin.x}
-                y={staticLayer.origin.y}
-                width={staticLayer.width}
-                height={staticLayer.height}
-                preserveAspectRatio="none"
-                style={{ imageRendering: 'auto' }}
-              />
-            ) : (
-              <>
-                {backgroundPixelEntries.map(({ q, r, x, y }) => (
-                  <HexPolygon
-                    key={`bg-${q}-${r}`}
-                    cx={x}
-                    cy={y}
-                    size={MICRO_HEX_SIZE * 1.05}
-                    stroke="rgba(148,163,184,0.08)"
-                    fill={((q + r) & 1) === 0 ? 'rgba(15,23,42,0.25)' : 'rgba(15,23,42,0.18)'}
-                    strokeWidth={0.75}
+                  <rect width="6" height="6" fill="rgba(127,29,29,0.12)" />
+                  <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(248,113,113,0.55)" strokeWidth="2" />
+                </pattern>
+              </defs>
+              <g style={{ transform: `scale(${mapZoom})`, transformOrigin: 'center' }}>
+                <rect x="-600" y="-600" width="1200" height="1200" fill="#020617" />
+                <circle cx={0} cy={0} r={REGION_RADIUS * MICRO_HEX_SIZE * 2.8} fill="url(#region-center)" />
+                {staticLayer ? (
+                  <image
+                    href={staticLayer.href}
+                    x={staticLayer.origin.x}
+                    y={staticLayer.origin.y}
+                    width={staticLayer.width}
+                    height={staticLayer.height}
+                    preserveAspectRatio="none"
+                    style={{ imageRendering: 'auto' }}
+                  />
+                ) : (
+                  <>
+                    {backgroundPixelEntries.map(({ q, r, x, y }) => (
+                      <HexPolygon
+                        key={`bg-${q}-${r}`}
+                        cx={x}
+                        cy={y}
+                        size={MICRO_HEX_SIZE * 1.05}
+                        stroke="rgba(148,163,184,0.08)"
+                        fill={((q + r) & 1) === 0 ? 'rgba(15,23,42,0.25)' : 'rgba(15,23,42,0.18)'}
+                        strokeWidth={0.75}
+                      />
+                    ))}
+                  </>
+                )}
+                {convoyPathPolylines.map((polyline) => (
+                  <polyline
+                    key={polyline.id}
+                    points={polyline.points}
+                    fill="none"
+                    stroke={polyline.state === 'failed' ? 'rgba(248,113,113,0.75)' : 'rgba(14,165,233,0.6)'}
+                    strokeWidth={polyline.state === 'returning' ? 2 : 3}
+                    strokeDasharray={polyline.state === 'returning' ? '3 5' : '8 6'}
+                    strokeLinecap="round"
                   />
                 ))}
-              </>
-            )}
-            {pathPointString ? (
-              <polyline
-                points={pathPointString}
-                fill="none"
-                stroke="rgba(56,189,248,0.85)"
-                strokeWidth={3}
-                strokeDasharray="8 6"
-                strokeLinecap="round"
-              />
-            ) : null}
-            {tiles.map((tile) => {
-              const position = tilePositionLookup.get(`${tile.q}_${tile.r}`);
-              if (!position) {
-                return null;
-              }
-              const { x, y } = position;
-              const key = `${tile.q}_${tile.r}`;
-              const isSelected = selectedTileId === key;
-              const isStart = startTileId === key;
-              const isTarget = targetTileId === key;
-              const isPath = pathKeySet.has(key);
-              const matchesFilter = matchesAllianceFilter(tile);
-              const isDimmed = filterIsActive && !matchesFilter;
-              const allianceMeta = tile.allianceId ? alliancesById.get(tile.allianceId) : undefined;
-              const defaultStroke = tile.settleable ? '#1e293b' : 'rgba(248,113,113,0.7)';
-              const baseStrokeWidth = tile.settleable ? 1.75 : 2.1;
-              const pointerFill = staticLayer
-                ? 'rgba(255,255,255,0.0001)'
-                : tile.settleable
-                  ? biomeFill(tile.biome)
-                  : 'url(#region-unsettleable-hatch)';
-              const pointerStroke = staticLayer ? 'rgba(0,0,0,0)' : isSelected ? '#fbbf24' : defaultStroke;
-              const pointerStrokeWidth = staticLayer ? 0.001 : isSelected ? 3 : baseStrokeWidth;
-              const overlayFill = allianceMeta
-                ? applyAlpha(allianceMeta.color, matchesFilter ? 0.28 : 0.12)
-                : undefined;
-              return (
-                <g
-                  key={key}
-                  filter="url(#region-hex-shadow)"
-                  onClick={() => handleTileInteraction(tile)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      handleTileInteraction(tile);
-                    }
-                  }}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={describeTile(tile)}
-                  aria-pressed={isSelected}
-                  style={{ cursor: 'pointer', opacity: isDimmed ? 0.32 : 1, transition: 'opacity 180ms ease' }}
-                >
-                  <HexPolygon
-                    cx={x}
-                    cy={y}
-                    size={MICRO_HEX_SIZE}
-                    stroke={pointerStroke}
-                    fill={pointerFill}
-                    strokeWidth={pointerStrokeWidth}
+                {pathPointString ? (
+                  <polyline
+                    points={pathPointString}
+                    fill="none"
+                    stroke="rgba(253,224,71,0.8)"
+                    strokeWidth={3}
+                    strokeDasharray="10 5"
+                    strokeLinecap="round"
                   />
-                  {staticLayer && isSelected ? (
-                    <HexPolygon
-                      cx={x}
-                      cy={y}
-                      size={MICRO_HEX_SIZE}
-                      stroke="#fbbf24"
-                      fill="none"
-                      strokeWidth={3}
-                    />
-                  ) : null}
-                  {overlayFill ? (
-                    <HexPolygon
-                      cx={x}
-                      cy={y}
-                      size={MICRO_HEX_SIZE * 0.92}
-                      stroke={applyAlpha(allianceMeta?.color ?? '#facc15', matchesFilter ? 0.85 : 0.45)}
-                      fill={overlayFill}
-                      strokeWidth={1.4}
-                    />
-                  ) : null}
-                  {isPath ? (
-                    <HexPolygon
-                      cx={x}
-                      cy={y}
-                      size={MICRO_HEX_SIZE * 0.85}
-                      stroke="rgba(56,189,248,0.35)"
-                      fill="rgba(56,189,248,0.15)"
-                      strokeWidth={1.5}
-                    />
-                  ) : null}
-                  {tile.poi?.length ? (
-                    <circle cx={x} cy={y} r={6} fill="rgba(148,163,184,0.35)" stroke="#38bdf8" strokeWidth={1.5} />
-                  ) : null}
-                  {isStart ? (
-                    <text
-                      x={x}
-                      y={y - 16}
-                      textAnchor="middle"
-                      fontSize={8}
-                      fill="#38bdf8"
-                      fontFamily="Cinzel"
+                ) : null}
+                {tiles.map((tile) => {
+                  const position = tilePositionLookup.get(`${tile.q}_${tile.r}`);
+                  if (!position) {
+                    return null;
+                  }
+                  const { x, y } = position;
+                  const key = `${tile.q}_${tile.r}`;
+                  const isSelected = selectedTileId === key;
+                  const isStart = startTileId === key;
+                  const isTarget = targetTileId === key;
+                  const isPath = pathKeySet.has(key);
+                  const matchesFilter = matchesAllianceFilter(tile);
+                  const isDimmed = filterIsActive && !matchesFilter;
+                  const allianceMeta = tile.allianceId ? alliancesById.get(tile.allianceId) : undefined;
+                  const defaultStroke = tile.settleable ? '#1e293b' : 'rgba(248,113,113,0.7)';
+                  const baseStrokeWidth = tile.settleable ? 1.75 : 2.1;
+                  const pointerFill = staticLayer
+                    ? 'rgba(255,255,255,0.0001)'
+                    : tile.settleable
+                      ? biomeFill(tile.biome)
+                      : 'url(#region-unsettleable-hatch)';
+                  const pointerStroke = staticLayer ? 'rgba(0,0,0,0)' : isSelected ? '#fbbf24' : defaultStroke;
+                  const pointerStrokeWidth = staticLayer ? 0.001 : isSelected ? 3 : baseStrokeWidth;
+                  const overlayFill = allianceMeta
+                    ? applyAlpha(allianceMeta.color, matchesFilter ? 0.28 : 0.12)
+                    : undefined;
+                  const unitsHere = unitsByTile.get(key) ?? [];
+                  const isHome = homeTile && homeTile.q === tile.q && homeTile.r === tile.r;
+                  const crestLabel = allianceMeta ? allianceMeta.tag.slice(0, 2) : 'NE';
+                  const showLabel = mapZoom >= 1.35 || (mapZoom >= 1 && (isSelected || hoveredTileId === key));
+                  const showCrest = mapZoom >= 0.85;
+                  return (
+                    <g
+                      key={key}
+                      filter="url(#region-hex-shadow)"
+                      onClick={() => handleTileInteraction(tile)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          handleTileInteraction(tile);
+                        }
+                      }}
+                      onMouseEnter={() => setHoveredTileId(key)}
+                      onMouseLeave={() => setHoveredTileId((previous) => (previous === key ? null : previous))}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={describeTile(tile)}
+                      aria-pressed={isSelected}
+                      style={{ cursor: 'pointer', opacity: isDimmed ? 0.32 : 1, transition: 'opacity 180ms ease' }}
                     >
-                      Start
-                    </text>
-                  ) : null}
-                  {isTarget ? (
-                    <text
-                      x={x}
-                      y={y + 18}
-                      textAnchor="middle"
-                      fontSize={8}
-                      fill="#facc15"
-                      fontFamily="Cinzel"
-                    >
-                      Ziel
-                    </text>
-                  ) : null}
-                  {allianceMeta ? (
-                    <text
-                      x={x}
-                      y={y + 4}
-                      textAnchor="middle"
-                      fontSize={7}
-                      fill="#fefce8"
-                      fontFamily="Cinzel"
-                      style={{ pointerEvents: 'none' }}
-                      opacity={isDimmed ? 0.58 : 0.95}
-                    >
-                      {allianceMeta.tag}
-                    </text>
-                  ) : null}
-                  <title>{describeTile(tile)}</title>
-                </g>
-              );
-            })}
-          </svg>
+                      <HexPolygon
+                        cx={x}
+                        cy={y}
+                        size={MICRO_HEX_SIZE}
+                        stroke={pointerStroke}
+                        fill={pointerFill}
+                        strokeWidth={pointerStrokeWidth}
+                      />
+                      {isPath ? (
+                        <HexPolygon
+                          cx={x}
+                          cy={y}
+                          size={MICRO_HEX_SIZE * 0.85}
+                          stroke="rgba(56,189,248,0.45)"
+                          fill="rgba(56,189,248,0.18)"
+                          strokeWidth={1.5}
+                        />
+                      ) : null}
+                      {overlayFill ? (
+                        <HexPolygon
+                          cx={x}
+                          cy={y}
+                          size={MICRO_HEX_SIZE * 0.92}
+                          stroke={applyAlpha(allianceMeta?.color ?? '#facc15', matchesFilter ? 0.85 : 0.45)}
+                          fill={overlayFill}
+                          strokeWidth={1.4}
+                        />
+                      ) : null}
+                      {isHome ? (
+                        <HexPolygon
+                          cx={x}
+                          cy={y}
+                          size={MICRO_HEX_SIZE * 1.05}
+                          stroke="#fcd34d"
+                          fill="none"
+                          strokeWidth={2.2}
+                          className="animate-pulse"
+                        />
+                      ) : null}
+                      {showCrest ? (
+                        <text
+                          x={x}
+                          y={y + (showLabel ? -2 : 2)}
+                          textAnchor="middle"
+                          fontSize={showLabel ? 9 : 7}
+                          fill="#fefce8"
+                          fontFamily="Cinzel"
+                          style={{ pointerEvents: 'none' }}
+                          opacity={isDimmed ? 0.58 : 0.95}
+                        >
+                          {crestLabel}
+                        </text>
+                      ) : null}
+                      {showLabel ? (
+                        <text
+                          x={x}
+                          y={y + 10}
+                          textAnchor="middle"
+                          fontSize={7}
+                          fill="#e2e8f0"
+                          fontFamily="Cinzel"
+                          style={{ pointerEvents: 'none' }}
+                        >
+                          {tile.biome}
+                        </text>
+                      ) : null}
+                      {isStart ? (
+                        <text
+                          x={x}
+                          y={y - 18}
+                          textAnchor="middle"
+                          fontSize={8}
+                          fill="#38bdf8"
+                          fontFamily="Cinzel"
+                        >
+                          Start
+                        </text>
+                      ) : null}
+                      {isTarget ? (
+                        <text
+                          x={x}
+                          y={y + 20}
+                          textAnchor="middle"
+                          fontSize={8}
+                          fill="#facc15"
+                          fontFamily="Cinzel"
+                        >
+                          Ziel
+                        </text>
+                      ) : null}
+                      {unitsHere.length ? (
+                        <g transform={`translate(${x - 10},${y - 18})`}>
+                          <rect width="20" height="8" rx="4" fill="rgba(15,23,42,0.7)" stroke="rgba(248,250,252,0.4)" strokeWidth={0.6} />
+                          <text
+                            x={10}
+                            y={5.5}
+                            textAnchor="middle"
+                            fontSize={6}
+                            fill="#f8fafc"
+                            fontFamily="Cinzel"
+                          >
+                            {unitsHere.length}×
+                          </text>
+                        </g>
+                      ) : null}
+                      <title>{describeTile(tile)}</title>
+                    </g>
+                  );
+                })}
+                {convoys.map((convoy) => {
+                  if (convoy.state === 'done' || convoy.state === 'failed') {
+                    return null;
+                  }
+                  const lead = units.find((unit) => convoy.unitIds.includes(unit.id));
+                  if (!lead) {
+                    return null;
+                  }
+                  const position = tilePositionLookup.get(`${lead.location.q}_${lead.location.r}`);
+                  if (!position) {
+                    return null;
+                  }
+                  const remaining = convoyPressure[convoy.id] ?? convoy.pressureTankMax;
+                  const fraction = convoy.pressureTankMax > 0 ? remaining / convoy.pressureTankMax : 0;
+                  return (
+                    <g key={`convoy-${convoy.id}`} transform={`translate(${position.x - 12},${position.y - 30})`}>
+                      <rect width="24" height="6" rx="3" fill="rgba(15,23,42,0.9)" stroke="rgba(250,204,21,0.7)" strokeWidth={0.8} />
+                      <rect
+                        x="1"
+                        y="1"
+                        width={22 * fraction}
+                        height="4"
+                        rx="2"
+                        fill={fraction > 0.4 ? 'rgba(74,222,128,0.8)' : 'rgba(248,113,113,0.8)'}
+                      />
+                    </g>
+                  );
+                })}
+              </g>
+            </svg>
             {pathStatus ? (
               <div
                 className={`pointer-events-none absolute left-4 top-4 flex max-w-xs rounded-full border px-4 py-1.5 text-[0.65rem] uppercase tracking-wide ${toneClasses[pathStatus.tone]}`}
@@ -792,95 +1066,82 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
                 {pathStatus.message}
               </div>
             ) : null}
+            <div className="pointer-events-none absolute left-4 bottom-4 flex flex-col gap-2 text-[0.65rem] uppercase tracking-wide text-slate-200">
+              <div className="rounded-full border border-slate-700/60 bg-black/40 px-3 py-1 text-slate-200">{modeHint}</div>
+            </div>
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-800/40 bg-slate-950/40 p-3 text-[0.65rem] uppercase tracking-wide text-slate-200">
-          <div className="flex items-center gap-2">
-            <span className="h-3 w-3 rounded-full border border-emerald-400/70 bg-emerald-500/50" aria-hidden="true" />
-            <span>Besiedelbar</span>
+        <div
+          className={`relative flex w-full max-w-md flex-col border-l border-yellow-500/20 bg-slate-950/80 transition-transform duration-300 ${
+            isTableOpen ? 'translate-x-0' : 'translate-x-full'
+          }`}
+        >
+          <div className="flex items-center justify-between border-b border-yellow-500/20 px-4 py-3 text-xs uppercase tracking-wide text-yellow-200">
+            <span>Regionstabelle</span>
+            <button
+              type="button"
+              className="rounded-full border border-yellow-500/40 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-yellow-100"
+              onClick={() => setIsTableOpen(false)}
+            >
+              Ausblenden
+            </button>
           </div>
-          <div className="flex items-center gap-2">
-            <span
-              className="h-3 w-3 rounded-full border border-rose-500/60"
-              style={{
-                backgroundImage: 'repeating-linear-gradient(45deg, rgba(248,113,113,0.5), rgba(248,113,113,0.5) 2px, rgba(127,29,29,0.2) 2px, rgba(127,29,29,0.2) 4px)',
-              }}
-              aria-hidden="true"
+          <div className="flex-1 overflow-hidden p-3">
+            <RegionTileTable
+              tiles={filteredTiles}
+              selectedTileId={selectedTileId}
+              startTileId={startTileId}
+              targetTileId={targetTileId}
+              onInspect={handleInspect}
+              onAssignStart={assignStart}
+              onAssignTarget={assignTarget}
+              alliances={alliancesById}
+              filterLabel={filterLabel}
+              totalTiles={tiles.length}
+              isFilterActive={filterIsActive}
+              onClearFilter={() => setActiveAllianceFilter('all')}
+              unitsByTile={unitsByTile}
             />
-            <span>Unbewohnbar</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="h-3 w-6 rounded-full border border-cyan-400/70 bg-cyan-500/40" aria-hidden="true" />
-            <span>Pfad</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="h-3 w-6 rounded-full border border-yellow-400/70 bg-yellow-500/30" aria-hidden="true" />
-            <span>Start/Ziel-Markierung</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="h-3 w-3 rounded-full border border-slate-200/40 bg-slate-200/60" aria-hidden="true" />
-            <span>Bandenfarbe</span>
           </div>
         </div>
-        {selectedTile ? (
-          <div className="rounded-2xl border border-yellow-800/30 bg-black/40 p-4 text-sm text-slate-100">
-            <h2 className="text-lg font-cinzel text-yellow-200">Hex {selectedTile.q}, {selectedTile.r}</h2>
-            <dl className="mt-2 space-y-1 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-slate-400">Biom</dt>
-                <dd>{selectedTile.biome}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-slate-400">Status</dt>
-                <dd>{selectedTile.settleable ? 'Besiedelbar' : 'Unbewohnbar'}</dd>
-              </div>
-              <div className="flex items-center justify-between">
-                <dt className="text-slate-400">Kontrolle</dt>
-                <dd className="flex items-center gap-2">
-                  {selectedAlliance ? (
-                    <>
-                      <span
-                        className="inline-flex h-3 w-3 rounded-full"
-                        style={{ backgroundColor: selectedAlliance.color }}
-                        aria-hidden="true"
-                      />
-                      <span>{selectedAlliance.tag}</span>
-                    </>
-                  ) : (
-                    <span>Neutral</span>
-                  )}
-                </dd>
-              </div>
-              {selectedTile.poi?.length ? (
-                <div className="flex justify-between">
-                  <dt className="text-slate-400">Besonderheiten</dt>
-                  <dd className="text-right text-cyan-200">{selectedTile.poi.join(', ')}</dd>
-                </div>
-              ) : null}
-            </dl>
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-slate-800/40 bg-slate-950/60 p-4 text-sm text-slate-300">
-            Wähle ein Hexfeld oder einen Tabelleneintrag, um Details einzublenden.
-          </div>
-        )}
       </div>
-      <aside className="flex h-full min-h-[260px] flex-1 flex-col gap-3 md:max-w-md">
-        <RegionTileTable
-          tiles={filteredTiles}
-          selectedTileId={selectedTileId}
-          startTileId={startTileId}
-          targetTileId={targetTileId}
-          onInspect={handleInspect}
-          onAssignStart={assignStart}
-          onAssignTarget={assignTarget}
-          alliances={alliancesById}
-          filterLabel={filterLabel}
-          totalTiles={filteredTiles.length}
-          isFilterActive={filterIsActive}
-          onClearFilter={() => setActiveAllianceFilter('all')}
+      {selectedTile ? (
+        <div className="border-t border-yellow-500/20 bg-black/40 px-4 py-3 text-xs uppercase tracking-wide text-yellow-200">
+          <span>
+            Hex {selectedTile.q}, {selectedTile.r} – {selectedTile.biome} • {selectedTile.settleable ? 'Besiedelbar' : 'Unbewohnbar'}
+          </span>
+        </div>
+      ) : null}
+      {banner ? (
+        <div
+          className={`fixed bottom-8 left-1/2 z-20 -translate-x-1/2 rounded-full border px-6 py-2 text-xs uppercase tracking-wide shadow-2xl ${toneClasses[banner.tone]}`}
+        >
+          {banner.message}
+        </div>
+      ) : null}
+      <div className="pointer-events-none absolute right-6 top-24 z-30 flex flex-col gap-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={`rounded-full border px-4 py-1.5 text-[0.65rem] uppercase tracking-wide ${toneClasses[toast.tone]}`}
+          >
+            {toast.message}
+          </div>
+        ))}
+      </div>
+      {isModalOpen && pendingConvoy ? (
+        <ConvoyActionModal
+          region={region}
+          start={pendingConvoy.start}
+          target={pendingConvoy.target}
+          availableUnits={modalUnits}
+          onClose={() => {
+            setIsModalOpen(false);
+            setPendingConvoy(null);
+          }}
+          onConfirm={handleConvoyConfirm}
         />
-      </aside>
+      ) : null}
     </div>
   );
 };

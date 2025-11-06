@@ -38,6 +38,7 @@ export interface TileData {
   settleable: boolean;
   allianceId?: string;
   poi?: string[];
+  units?: string[];
 }
 
 /**
