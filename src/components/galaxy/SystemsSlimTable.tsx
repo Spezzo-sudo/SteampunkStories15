@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import VirtualList from '@/lib/virtualList';
 import OwnerChips from '@/components/galaxy/OwnerChips';
 

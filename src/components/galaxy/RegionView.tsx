@@ -424,7 +424,10 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     );
   }, [region, startTile, targetTile, traversalCost]);
 
-  const pathCoordinates = pathResult?.status === 'success' ? pathResult.path : [];
+  const pathCoordinates = useMemo(
+    () => (pathResult?.status === 'success' ? pathResult.path : []),
+    [pathResult],
+  );
 
   const pathPointString = useMemo(
     () =>

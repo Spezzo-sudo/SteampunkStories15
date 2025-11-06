@@ -49,6 +49,8 @@ interface GameActions {
   setView: (view: View) => void;
   gameTick: () => void;
   canAfford: (cost: Resources) => boolean;
+  spendResources: (cost: Resources) => boolean;
+  refundResources: (refund: Resources) => void;
   getUpgradeCost: (entity: Building | Research, targetLevel: number) => Resources;
   getBuildTime: (cost: Resources) => number;
   startUpgrade: (entity: Building | Research) => void;
@@ -86,6 +88,35 @@ export const useGameStore = create<GameState & GameActions>()(
         resources[ResourceType.Fokuskristalle] >= cost[ResourceType.Fokuskristalle] &&
         resources[ResourceType.Vitriol] >= cost[ResourceType.Vitriol]
       );
+    },
+
+    spendResources: (cost) => {
+      if (!get().canAfford(cost)) {
+        return false;
+      }
+      set((state) => {
+        state.resources[ResourceType.Orichalkum] -= cost[ResourceType.Orichalkum];
+        state.resources[ResourceType.Fokuskristalle] -= cost[ResourceType.Fokuskristalle];
+        state.resources[ResourceType.Vitriol] -= cost[ResourceType.Vitriol];
+      });
+      return true;
+    },
+
+    refundResources: (refund) => {
+      set((state) => {
+        state.resources[ResourceType.Orichalkum] = Math.min(
+          state.storage[ResourceType.Orichalkum],
+          state.resources[ResourceType.Orichalkum] + refund[ResourceType.Orichalkum],
+        );
+        state.resources[ResourceType.Fokuskristalle] = Math.min(
+          state.storage[ResourceType.Fokuskristalle],
+          state.resources[ResourceType.Fokuskristalle] + refund[ResourceType.Fokuskristalle],
+        );
+        state.resources[ResourceType.Vitriol] = Math.min(
+          state.storage[ResourceType.Vitriol],
+          state.resources[ResourceType.Vitriol] + refund[ResourceType.Vitriol],
+        );
+      });
     },
 
     getUpgradeCost: (entity, targetLevel) => calculateUpgradeCost(entity, targetLevel),

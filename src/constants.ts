@@ -312,6 +312,24 @@ export const BIOME_STYLES: Record<PlanetBiome, { label: string; fill: string; st
 };
 
 /**
+ * Startinventar der Werft, damit neue Kommandanten sofort einsatzbereite Schiffe besitzen.
+ */
+export const INITIAL_FLEET_COMPOSITION: Record<string, number> = {
+  spaeherdrohne: 2,
+  kohlenfrachter: 1,
+};
+
+/**
+ * Maximale Anzahl an Hangar-Slots für neue Accounts.
+ */
+export const INITIAL_HANGAR_CAPACITY = 20;
+
+/**
+ * Obergrenze gleichzeitiger Bauaufträge in der Werft.
+ */
+export const MAX_SHIPYARD_QUEUE = 4;
+
+/**
  * Blueprint-Definitionen für Schiffe der Werftansicht.
  */
 export const SHIP_BLUEPRINTS: ShipBlueprint[] = [

@@ -123,22 +123,26 @@ const averageHexColors = (colors: string[]): string => {
   if (colors.length === 0) {
     return '#facc15';
   }
-  const { r, g, b } = colors
+  const valid = colors
     .map((color) => hexToRgb(color))
-    .reduce(
-      (acc, current) => ({
-        r: acc.r + srgbToLinear(current.r),
-        g: acc.g + srgbToLinear(current.g),
-        b: acc.b + srgbToLinear(current.b),
-      }),
-      { r: 0, g: 0, b: 0 },
-    );
-  const count = colors.length;
-  return rgbToHex({
-    r: Math.round(linearToSrgb(r / count)),
-    g: Math.round(linearToSrgb(g / count)),
-    b: Math.round(linearToSrgb(b / count)),
-  });
+    .filter((entry): entry is NonNullable<ReturnType<typeof hexToRgb>> => entry != null);
+  if (valid.length === 0) {
+    return '#facc15';
+  }
+  const { red, green, blue } = valid.reduce(
+    (acc, current) => ({
+      red: acc.red + srgbToLinear(current.red),
+      green: acc.green + srgbToLinear(current.green),
+      blue: acc.blue + srgbToLinear(current.blue),
+    }),
+    { red: 0, green: 0, blue: 0 },
+  );
+  const count = valid.length;
+  return rgbToHex(
+    Math.round(linearToSrgb(red / count)),
+    Math.round(linearToSrgb(green / count)),
+    Math.round(linearToSrgb(blue / count)),
+  );
 };
 
 const resolveBiomeVisuals = (
@@ -330,7 +334,6 @@ const HexMap: React.FC<HexMapProps> = ({
         }
       })
       .catch((error) => {
-        // eslint-disable-next-line no-console
         console.error('Failed to load terrain map', error);
       });
     return () => {
