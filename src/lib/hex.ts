@@ -135,6 +135,48 @@ export const computeHexDistance = (a: AxialCoordinates, b: AxialCoordinates) => 
 };
 
 /**
+ * Generates the straight-line path between two axial coordinates using hex interpolation.
+ */
+export const axialLine = (start: AxialCoordinates, end: AxialCoordinates) => {
+  const steps = computeHexDistance(start, end);
+  if (steps === 0) {
+    return [start];
+  }
+
+  const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+  const roundAxial = (value: { q: number; r: number; s: number }) => {
+    let { q, r, s } = value;
+    let rq = Math.round(q);
+    let rr = Math.round(r);
+    let rs = Math.round(s);
+
+    const qDiff = Math.abs(rq - q);
+    const rDiff = Math.abs(rr - r);
+    const sDiff = Math.abs(rs - s);
+
+    if (qDiff > rDiff && qDiff > sDiff) {
+      rq = -rr - rs;
+    } else if (rDiff > sDiff) {
+      rr = -rq - rs;
+    } else {
+      rs = -rq - rr;
+    }
+
+    return { q: rq, r: rr };
+  };
+
+  const result: AxialCoordinates[] = [];
+  for (let index = 0; index <= steps; index += 1) {
+    const t = steps === 0 ? 0 : index / steps;
+    const q = lerp(start.q, end.q, t);
+    const r = lerp(start.r, end.r, t);
+    const s = lerp(-start.q - start.r, -end.q - end.r, t);
+    result.push(roundAxial({ q, r, s }));
+  }
+  return result;
+};
+
+/**
  * Utility to create a coordinate object with derived axial fields for mocks.
  */
 export const createGalaxyCoordinate = (

@@ -7,6 +7,8 @@ interface GameCardProps {
   level: number;
   targetLevel: number;
   description: string;
+  image?: string;
+  imageAlt?: string;
   upgradeCost: Resources;
   buildTime: number;
   canAfford: boolean;
@@ -58,6 +60,8 @@ const GameCard: React.FC<GameCardProps> = ({
   level,
   targetLevel,
   description,
+  image,
+  imageAlt,
   upgradeCost,
   buildTime,
   canAfford,
@@ -79,6 +83,17 @@ const GameCard: React.FC<GameCardProps> = ({
 
   return (
     <article className="flex h-full flex-col justify-between rounded-2xl border border-yellow-800/30 bg-black/50 p-5 shadow-lg backdrop-blur">
+      {image ? (
+        <div className="relative mb-3 overflow-hidden rounded-xl border border-yellow-800/30">
+          <img
+            src={image}
+            alt={imageAlt ?? `${name} Illustration`}
+            className="h-36 w-full object-cover"
+            loading="lazy"
+          />
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-black/10 via-transparent to-black/50" />
+        </div>
+      ) : null}
       <header className="mb-3 border-b border-yellow-800/30 pb-3">
         <h3
           className="text-[clamp(1.1rem,0.9vw+1rem,1.5rem)] font-cinzel font-semibold text-yellow-300 leading-snug"

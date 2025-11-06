@@ -24,6 +24,15 @@ const WerftView: React.FC = () => {
           <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
             {SHIP_BLUEPRINTS.map((ship) => (
               <article key={ship.id} className="flex h-full flex-col justify-between rounded-xl border border-yellow-800/30 bg-black/40 p-4">
+                <div className="relative mb-3 overflow-hidden rounded-lg border border-yellow-800/30">
+                  <img
+                    src={ship.image}
+                    alt={`${ship.name} Illustration`}
+                    className="h-32 w-full object-cover"
+                    loading="lazy"
+                  />
+                  <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-black/15 via-transparent to-black/50" />
+                </div>
                 <header className="space-y-1">
                   <h4 className="text-lg font-cinzel text-yellow-200">{ship.name}</h4>
                   <p className="text-xs uppercase tracking-wide text-gray-400">{ship.role}</p>
