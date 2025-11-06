@@ -2,20 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SQRT3, axialToPixel } from '@/lib/hex';
 import type { TerrainTile } from '@/components/galaxy/terrain/HexTerrainCanvas.types';
 
-export interface TerrainTile {
-  q: number;
-  r: number;
-  sprite: string;
-}
-
-type HexTerrainCanvasProps = {
+interface HexTerrainCanvasProps {
   tiles: TerrainTile[];
   width: number;
   height: number;
   zoom: number;
   offset: { x: number; y: number };
   size: number;
-};
+}
 
 const SPRITE_CACHE: Record<string, HTMLImageElement> = {};
 

@@ -12,6 +12,7 @@ const mockBuilding: Building = {
   id: 'testwerk',
   name: 'Testwerk',
   description: 'Erzeugt Testressourcen.',
+  image: '/assets/tests/testwerk.svg',
   baseCost: {
     [ResourceType.Orichalkum]: 100,
     [ResourceType.Fokuskristalle]: 50,

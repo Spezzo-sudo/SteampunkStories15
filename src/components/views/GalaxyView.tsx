@@ -6,7 +6,7 @@ import { useMapStore } from '@/store/mapStore';
 /**
  * Main galaxy view orchestrating macro map rendering and micro region drilldowns.
  */
-export default function GalaxyView(): JSX.Element {
+export default function GalaxyView(): React.ReactElement {
   const mode = useMapStore((state) => state.mode);
   const regions = useMapStore((state) => state.regions);
   const activeRegion = useMapStore((state) => state.activeRegion);
