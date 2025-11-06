@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { MICRO_HEX_SIZE, REGION_RADIUS } from '@/constants/map';
-import { axialDisk, axialLine, axialToPixel } from '@/lib/hex';
+import { axialDisk, axialToPixel } from '@/lib/hex';
 import { RegionTileTable } from '@/components/galaxy/RegionTileTable';
-import type { RegionData, TileData } from '@/types/map';
+import type { Axial, RegionData, TileData } from '@/types/map';
 import { useAllianceStore } from '@/store/allianceStore';
 import { applyAlpha } from '@/lib/color';
+import { aStarPath, alliancePenalty } from '@/lib/pathfinding';
 
 interface RegionViewProps {
   region: RegionData;
@@ -44,6 +45,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   const [activeAllianceFilter, setActiveAllianceFilter] = useState<AllianceFilter>('all');
   const alliances = useAllianceStore((state) => state.alliances);
   const initializeAlliances = useAllianceStore((state) => state.initialize);
+  const myAllianceId = useAllianceStore((state) => state.myAllianceId);
 
   useEffect(() => {
     void initializeAlliances();
@@ -155,28 +157,29 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     [assignStart, assignTarget, handleInspect, mode],
   );
 
-  const path = useMemo(() => {
+  const pathCoordinates = useMemo(() => {
     if (!startTile || !targetTile) {
-      return [] as TileData[];
+      return [] as Axial[];
     }
-    const coordinates = axialLine({ q: startTile.q, r: startTile.r }, { q: targetTile.q, r: targetTile.r });
-    return coordinates.map((coord) => tiles.find((tile) => tile.q === coord.q && tile.r === coord.r)).filter(Boolean) as TileData[];
-  }, [startTile, targetTile, tiles]);
+    const result = aStarPath(
+      region,
+      { q: startTile.q, r: startTile.r },
+      { q: targetTile.q, r: targetTile.r },
+      alliancePenalty(myAllianceId),
+    );
+    return result ?? [];
+  }, [region, startTile, targetTile, myAllianceId]);
 
-  const pathPointString = useMemo(() => {
-    if (!startTile || !targetTile) {
-      return '';
-    }
-    const coordinates = axialLine({ q: startTile.q, r: startTile.r }, { q: targetTile.q, r: targetTile.r });
-    return coordinates
+  const pathPointString = useMemo(() =>
+    pathCoordinates
       .map((coord) => {
         const { x, y } = axialToPixel({ q: coord.q, r: coord.r }, MICRO_HEX_SIZE);
         return `${x},${y}`;
       })
-      .join(' ');
-  }, [startTile, targetTile]);
+      .join(' '),
+  [pathCoordinates]);
 
-  const pathKeySet = useMemo(() => new Set(path.map((tile) => `${tile.q}_${tile.r}`)), [path]);
+  const pathKeySet = useMemo(() => new Set(pathCoordinates.map((coord) => `${coord.q}_${coord.r}`)), [pathCoordinates]);
 
   const selectedTileId = selectedTile ? `${selectedTile.q}_${selectedTile.r}` : null;
   const startTileId = startTile ? `${startTile.q}_${startTile.r}` : null;
@@ -286,6 +289,16 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
               <filter id="region-hex-shadow" x="-30%" y="-30%" width="160%" height="160%">
                 <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="rgba(15,23,42,0.8)" floodOpacity="0.5" />
               </filter>
+              <pattern
+                id="region-unsettleable-hatch"
+                width="6"
+                height="6"
+                patternUnits="userSpaceOnUse"
+                patternTransform="rotate(45)"
+              >
+                <rect width="6" height="6" fill="rgba(127,29,29,0.12)" />
+                <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(248,113,113,0.55)" strokeWidth="2" />
+              </pattern>
             </defs>
             <rect x="-600" y="-600" width="1200" height="1200" fill="#020617" />
             <circle cx={0} cy={0} r={REGION_RADIUS * MICRO_HEX_SIZE * 2.8} fill="url(#region-center)" />
@@ -323,6 +336,8 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
               const matchesFilter = matchesAllianceFilter(tile);
               const isDimmed = filterIsActive && !matchesFilter;
               const allianceMeta = tile.allianceId ? alliancesById.get(tile.allianceId) : undefined;
+              const tileStroke = tile.settleable ? (isSelected ? '#fbbf24' : '#1e293b') : 'rgba(248,113,113,0.7)';
+              const tileFill = tile.settleable ? biomeFill(tile.biome) : 'url(#region-unsettleable-hatch)';
               const overlayFill = allianceMeta
                 ? applyAlpha(allianceMeta.color, matchesFilter ? 0.28 : 0.12)
                 : undefined;
@@ -347,9 +362,9 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
                     cx={x}
                     cy={y}
                     size={MICRO_HEX_SIZE}
-                    stroke={isSelected ? '#fbbf24' : '#1e293b'}
-                    fill={biomeFill(tile.biome)}
-                    strokeWidth={isSelected ? 3 : 1.75}
+                    stroke={tileStroke}
+                    fill={tileFill}
+                    strokeWidth={isSelected ? 3 : tile.settleable ? 1.75 : 2.1}
                   />
                   {overlayFill ? (
                     <HexPolygon
@@ -373,12 +388,6 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
                   ) : null}
                   {tile.poi?.length ? (
                     <circle cx={x} cy={y} r={6} fill="rgba(148,163,184,0.35)" stroke="#38bdf8" strokeWidth={1.5} />
-                  ) : null}
-                  {!tile.settleable ? (
-                    <line x1={x - 12} y1={y - 12} x2={x + 12} y2={y + 12} stroke="rgba(248,113,113,0.85)" strokeWidth={2} />
-                  ) : null}
-                  {!tile.settleable ? (
-                    <line x1={x + 12} y1={y - 12} x2={x - 12} y2={y + 12} stroke="rgba(248,113,113,0.85)" strokeWidth={2} />
                   ) : null}
                   {isStart ? (
                     <text
