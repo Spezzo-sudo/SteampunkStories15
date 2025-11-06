@@ -1,0 +1,27 @@
+{
+  "regionId": "0_0",
+  "RQ": 0,
+  "RR": 0,
+  "radius": 2,
+  "tiles": [
+    { "q": 0, "r": 0, "biome": "Steppe", "settleable": true, "poi": ["Kupferquelle"] },
+    { "q": 1, "r": 0, "biome": "Wald", "settleable": true },
+    { "q": 1, "r": -1, "biome": "Hochland", "settleable": true },
+    { "q": 0, "r": -1, "biome": "Dampfwiese", "settleable": true },
+    { "q": -1, "r": 0, "biome": "Moor", "settleable": false, "poi": ["Alte Pumpstation"] },
+    { "q": -1, "r": 1, "biome": "Wald", "settleable": true },
+    { "q": 0, "r": 1, "biome": "Steppe", "settleable": true },
+    { "q": 1, "r": 1, "biome": "Kristallufer", "settleable": true },
+    { "q": 2, "r": 0, "biome": "Rußklippen", "settleable": false },
+    { "q": 2, "r": -1, "biome": "Ödland", "settleable": false },
+    { "q": 1, "r": -2, "biome": "Hochland", "settleable": true },
+    { "q": 0, "r": -2, "biome": "Steppe", "settleable": true },
+    { "q": -1, "r": -1, "biome": "Moor", "settleable": false },
+    { "q": -2, "r": 0, "biome": "Rußklippen", "settleable": false },
+    { "q": -2, "r": 1, "biome": "Ödland", "settleable": false },
+    { "q": -1, "r": 2, "biome": "Wald", "settleable": true },
+    { "q": 0, "r": 2, "biome": "Dampfwiese", "settleable": true },
+    { "q": 1, "r": 2, "biome": "Kristallufer", "settleable": true },
+    { "q": 2, "r": -2, "biome": "Steppe", "settleable": true }
+  ]
+}

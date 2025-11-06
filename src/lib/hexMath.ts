@@ -1,4 +1,4 @@
-const SQRT3 = Math.sqrt(3);
+import { SQRT3, axialToPixel as axialToPixelVector, pixelToAxial as pixelToAxialVector } from './hex';
 
 export interface FractionalAxial {
   q: number;
@@ -16,17 +16,14 @@ export const HEX_MATH = {
  * Converts an axial coordinate into pixel space for a pointy-top layout.
  */
 export const axialToPixel = (q: number, r: number, radius: number) => ({
-  x: radius * (SQRT3 * q + (SQRT3 / 2) * r),
-  y: radius * ((3 / 2) * r),
+  ...axialToPixelVector({ q, r }, radius),
 });
 
 /**
  * Converts a pixel position into fractional axial coordinates for a pointy-top layout.
  */
-export const pixelToAxial = (x: number, y: number, radius: number): FractionalAxial => ({
-  q: (SQRT3 / 3 * x - y / 3) / radius,
-  r: (2 / 3 * y) / radius,
-});
+export const pixelToAxial = (x: number, y: number, radius: number): FractionalAxial =>
+  pixelToAxialVector(x, y, radius);
 
 /**
  * Generates the six vertex points of a hex polygon with the given radius.
