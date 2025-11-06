@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 type SnapPoint = 'peek' | 'half' | 'full';
 
-type BottomSheetProps = {
+interface BottomSheetProps {
   open: boolean;
   onClose: () => void;
   snaps?: SnapPoint[];
   initialSnap?: SnapPoint;
   ariaLabel?: string;
   children: React.ReactNode;
-};
+}
 
 const SNAP_HEIGHT = {
   peek: 0.2,

@@ -1,5 +1,6 @@
 import React from 'react';
 import type { TileData } from '@/types/map';
+import type { Unit } from '@/types/convoy';
 import { applyAlpha } from '@/lib/color';
 
 interface RegionTileTableProps {
@@ -15,6 +16,7 @@ interface RegionTileTableProps {
   totalTiles: number;
   isFilterActive: boolean;
   onClearFilter: () => void;
+  unitsByTile: Map<string, Unit[]>;
 }
 
 const badgeClass =
@@ -53,6 +55,7 @@ const RegionTileTableComponent: React.FC<RegionTileTableProps> = ({
   totalTiles,
   isFilterActive,
   onClearFilter,
+  unitsByTile,
 }) => (
   <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-yellow-800/40 bg-black/50">
     <div className="flex items-center justify-between border-b border-yellow-500/20 bg-black/40 px-3 py-2 text-xs uppercase tracking-wide text-yellow-200">
@@ -73,7 +76,7 @@ const RegionTileTableComponent: React.FC<RegionTileTableProps> = ({
     <div className={headerClass}>
       <span>Koordinate</span>
       <span>Biom</span>
-      <span>Status</span>
+      <span>Status &amp; Garnison</span>
       <span>Bande</span>
       <span className="text-right">Aktionen</span>
     </div>
@@ -87,6 +90,7 @@ const RegionTileTableComponent: React.FC<RegionTileTableProps> = ({
           const allianceMeta = tile.allianceId ? alliances.get(tile.allianceId) : undefined;
           const allianceLabel = allianceMeta?.tag ?? (tile.allianceId ? tile.allianceId : 'Neutral');
           const allianceColor = allianceMeta?.color ?? '#475569';
+          const unitsHere = unitsByTile.get(key) ?? [];
           return (
             <li key={key}>
               <button
@@ -120,6 +124,9 @@ const RegionTileTableComponent: React.FC<RegionTileTableProps> = ({
                     }`}
                   >
                     {tile.settleable ? 'Besiedelbar' : 'Unbewohnbar'}
+                  </span>
+                  <span className="mt-1 block text-[0.6rem] uppercase tracking-wide text-slate-300">
+                    {unitsHere.length ? `${unitsHere.length} Einheiten` : 'Keine Einheiten'}
                   </span>
                 </span>
                 <span>

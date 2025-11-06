@@ -1,13 +1,13 @@
 import React, { useMemo } from 'react';
 import { axialToPixel, pixelToAxial, hexPoints, pointsToAttribute } from '@/lib/hexMath';
 
-type HexBackgroundProps = {
+interface HexBackgroundProps {
   width: number;
   height: number;
   zoom: number;
   offset: { x: number; y: number };
   size: number;
-};
+}
 
 const OVERDRAW = 2;
 const FILL_PRIMARY = '#23304c';
@@ -39,7 +39,7 @@ const HexBackground: React.FC<HexBackgroundProps> = ({ width, height, zoom, offs
     const rMax = Math.ceil(Math.max(...corners.map((corner) => corner.r))) + OVERDRAW;
 
     const buffer = size * 2;
-    const visible: Array<{ x: number; y: number; parity: number }> = [];
+    const visible: { x: number; y: number; parity: number }[] = [];
 
     for (let r = rMin; r <= rMax; r += 1) {
       for (let q = qMin; q <= qMax; q += 1) {

@@ -9,7 +9,7 @@ interface WorldPayload {
 
 type MapMode = 'idle' | 'macro' | 'micro';
 
-type MapStoreState = {
+interface MapStoreState {
   mode: MapMode;
   regions: RegionMeta[];
   activeRegion: RegionData | null;
@@ -17,7 +17,7 @@ type MapStoreState = {
   loadWorld: () => Promise<void>;
   openRegion: (RQ: number, RR: number, seed?: number) => Promise<void>;
   backToMacro: () => void;
-};
+}
 
 /**
  * Global map store that orchestrates macro ↔ micro navigation and caches region payloads.
