@@ -1,10 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { MICRO_HEX_SIZE, REGION_RADIUS } from '@/constants/map';
-import { axialDisk, axialLine, axialToPixel } from '@/lib/hex';
+import { axialDisk, axialToPixel } from '@/lib/hex';
 import { RegionTileTable } from '@/components/galaxy/RegionTileTable';
-import type { RegionData, TileData } from '@/types/map';
+import type { Axial, RegionData, TileData } from '@/types/map';
 import { useAllianceStore } from '@/store/allianceStore';
 import { applyAlpha } from '@/lib/color';
+import {
+  alliancePenalty,
+  findRegionPath,
+  type PathFailureReason,
+  type PathfindingResult,
+} from '@/lib/pathfinding';
 
 interface RegionViewProps {
   region: RegionData;
@@ -22,6 +28,57 @@ interface HexPolygonProps {
 type SelectionMode = 'inspect' | 'start' | 'target';
 type AllianceFilter = 'all' | 'neutral' | string;
 
+type BannerTone = 'info' | 'success' | 'warning' | 'danger';
+
+interface BannerState {
+  tone: BannerTone;
+  message: string;
+}
+
+interface PositionedAxial extends Axial {
+  x: number;
+  y: number;
+}
+
+interface RegionStaticLayer {
+  href: string;
+  width: number;
+  height: number;
+  origin: { x: number; y: number };
+}
+
+const neighborOffsets: Axial[] = [
+  { q: 1, r: 0 },
+  { q: 1, r: -1 },
+  { q: 0, r: -1 },
+  { q: -1, r: 0 },
+  { q: -1, r: 1 },
+  { q: 0, r: 1 },
+];
+
+const failureMessages: Record<PathFailureReason, string> = {
+  'start-outside': 'Startpunkt liegt außerhalb der Region.',
+  'start-blocked': 'Startpunkt ist blockiert.',
+  'goal-outside': 'Ziel liegt außerhalb der Region.',
+  'goal-blocked': 'Ziel ist blockiert.',
+  unreachable: 'Kein Pfad – der Weg ist versperrt.',
+};
+
+const failureTones: Record<PathFailureReason, BannerTone> = {
+  'start-outside': 'warning',
+  'start-blocked': 'danger',
+  'goal-outside': 'warning',
+  'goal-blocked': 'danger',
+  unreachable: 'warning',
+};
+
+const toneClasses: Record<BannerTone, string> = {
+  info: 'border-cyan-500/40 bg-cyan-900/30 text-cyan-100',
+  success: 'border-emerald-500/40 bg-emerald-900/30 text-emerald-100',
+  warning: 'border-amber-500/40 bg-amber-900/30 text-amber-100',
+  danger: 'border-rose-500/40 bg-rose-900/30 text-rose-100',
+};
+
 const selectionButtonClass =
   'rounded-lg border border-yellow-600/40 bg-slate-900/60 px-3 py-1.5 text-xs uppercase tracking-wide text-yellow-100 transition hover:border-yellow-400/50 hover:bg-yellow-500/10';
 
@@ -37,13 +94,25 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     [region.tiles],
   );
   const backgroundTiles = useMemo(() => axialDisk(REGION_RADIUS + 2), []);
+  const [staticLayer, setStaticLayer] = useState<RegionStaticLayer | null>(null);
   const [selectedTile, setSelectedTile] = useState<TileData | null>(null);
   const [startTile, setStartTile] = useState<TileData | null>(null);
   const [targetTile, setTargetTile] = useState<TileData | null>(null);
   const [mode, setMode] = useState<SelectionMode>('inspect');
   const [activeAllianceFilter, setActiveAllianceFilter] = useState<AllianceFilter>('all');
+  const [banner, setBanner] = useState<BannerState | null>(null);
   const alliances = useAllianceStore((state) => state.alliances);
   const initializeAlliances = useAllianceStore((state) => state.initialize);
+  const myAllianceId = useAllianceStore((state) => state.myAllianceId);
+  const traversalCost = useMemo(() => alliancePenalty(myAllianceId), [myAllianceId]);
+  const numberFormatter = useMemo(
+    () =>
+      new Intl.NumberFormat('de-DE', {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      }),
+    [],
+  );
 
   useEffect(() => {
     void initializeAlliances();
@@ -54,7 +123,126 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     setStartTile(null);
     setTargetTile(null);
     setMode('inspect');
+    setBanner(null);
   }, [region.regionId]);
+
+  const tilePixelEntries = useMemo<PositionedAxial[]>(
+    () =>
+      tiles.map((tile) => {
+        const { x, y } = axialToPixel({ q: tile.q, r: tile.r }, MICRO_HEX_SIZE);
+        return { q: tile.q, r: tile.r, x, y };
+      }),
+    [tiles],
+  );
+
+  const tilePositionLookup = useMemo(() => {
+    const lookup = new Map<string, PositionedAxial>();
+    tilePixelEntries.forEach((entry) => {
+      lookup.set(`${entry.q}_${entry.r}`, entry);
+    });
+    return lookup;
+  }, [tilePixelEntries]);
+
+  const backgroundPixelEntries = useMemo<PositionedAxial[]>(
+    () =>
+      backgroundTiles.map((coord) => {
+        const { x, y } = axialToPixel({ q: coord.q, r: coord.r }, MICRO_HEX_SIZE * 1.05);
+        return { q: coord.q, r: coord.r, x, y };
+      }),
+    [backgroundTiles],
+  );
+
+  const staticBounds = useMemo(() => {
+    const combined = [...tilePixelEntries, ...backgroundPixelEntries];
+    if (combined.length === 0) {
+      return null;
+    }
+    const padding = MICRO_HEX_SIZE * 2.4;
+    const initial = combined[0];
+    const bounds = combined.reduce(
+      (acc, coord) => ({
+        minX: Math.min(acc.minX, coord.x),
+        maxX: Math.max(acc.maxX, coord.x),
+        minY: Math.min(acc.minY, coord.y),
+        maxY: Math.max(acc.maxY, coord.y),
+      }),
+      {
+        minX: initial.x,
+        maxX: initial.x,
+        minY: initial.y,
+        maxY: initial.y,
+      },
+    );
+    const minX = bounds.minX - padding;
+    const maxX = bounds.maxX + padding;
+    const minY = bounds.minY - padding;
+    const maxY = bounds.maxY + padding;
+    return {
+      minX,
+      maxX,
+      minY,
+      maxY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  }, [backgroundPixelEntries, tilePixelEntries]);
+
+  useEffect(() => {
+    if (!staticBounds) {
+      setStaticLayer(null);
+      return;
+    }
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    let cancelled = false;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.ceil(staticBounds.width));
+    canvas.height = Math.max(1, Math.ceil(staticBounds.height));
+    const context = canvas.getContext('2d');
+    if (!context) {
+      setStaticLayer(null);
+      return;
+    }
+
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = '#020617';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    const project = (coord: PositionedAxial) => ({
+      x: coord.x - staticBounds.minX,
+      y: coord.y - staticBounds.minY,
+    });
+
+    backgroundPixelEntries.forEach((coord) => {
+      const projected = project(coord);
+      drawBackgroundHex(context, projected.x, projected.y, MICRO_HEX_SIZE * 1.05, ((coord.q + coord.r) & 1) === 0);
+    });
+
+    tiles.forEach((tile) => {
+      const position = tilePositionLookup.get(`${tile.q}_${tile.r}`);
+      if (!position) {
+        return;
+      }
+      const projected = project(position);
+      drawRegionHex(context, projected.x, projected.y, tile, MICRO_HEX_SIZE);
+    });
+
+    const href = canvas.toDataURL('image/png');
+    if (!cancelled) {
+      setStaticLayer({
+        href,
+        width: staticBounds.width,
+        height: staticBounds.height,
+        origin: { x: staticBounds.minX, y: staticBounds.minY },
+      });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [backgroundPixelEntries, staticBounds, tilePositionLookup, tiles]);
 
   const alliancesById = useMemo(
     () =>
@@ -107,6 +295,12 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
 
   const filteredTiles = useMemo(() => tiles.filter((tile) => matchesAllianceFilter(tile)), [matchesAllianceFilter, tiles]);
 
+  const tileLookup = useMemo(() => {
+    const map = new Map<string, TileData>();
+    tiles.forEach((tile) => map.set(`${tile.q}_${tile.r}`, tile));
+    return map;
+  }, [tiles]);
+
   const filterLabel = useMemo(() => {
     if (activeAllianceFilter === 'all') {
       return 'Alle Hexfelder';
@@ -128,17 +322,80 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     setSelectedTile(tile);
   }, []);
 
-  const assignStart = useCallback((tile: TileData) => {
-    setStartTile(tile);
-    setSelectedTile(tile);
-    setMode('inspect');
-  }, []);
+  const findReachableNeighbor = useCallback(
+    (tile: TileData, start: TileData | null) => {
+      const options: { candidate: TileData; cost: number }[] = [];
+      neighborOffsets.forEach((offset) => {
+        const candidate = tileLookup.get(`${tile.q + offset.q}_${tile.r + offset.r}`);
+        if (candidate?.settleable) {
+          const cost = traversalCost(candidate);
+          if (Number.isFinite(cost)) {
+            options.push({ candidate, cost });
+          }
+        }
+      });
+      if (options.length === 0) {
+        return null;
+      }
+      options.sort((a, b) => a.cost - b.cost);
+      if (!start) {
+        return options[0].candidate;
+      }
+      for (const option of options) {
+        const candidateResult = findRegionPath(
+          region,
+          { q: start.q, r: start.r },
+          { q: option.candidate.q, r: option.candidate.r },
+          traversalCost,
+        );
+        if (candidateResult.status === 'success') {
+          return option.candidate;
+        }
+      }
+      return null;
+    },
+    [region, tileLookup, traversalCost],
+  );
 
-  const assignTarget = useCallback((tile: TileData) => {
-    setTargetTile(tile);
-    setSelectedTile(tile);
-    setMode('inspect');
-  }, []);
+  const assignStart = useCallback(
+    (tile: TileData) => {
+      setStartTile(tile);
+      setSelectedTile(tile);
+      setMode('inspect');
+      setBanner({ tone: 'info', message: `Startpunkt gesetzt: (${tile.q}, ${tile.r}).` });
+    },
+    [],
+  );
+
+  const assignTarget = useCallback(
+    (tile: TileData) => {
+      if (!tile.settleable) {
+        const fallback = findReachableNeighbor(tile, startTile);
+        if (fallback) {
+          setTargetTile(fallback);
+          setSelectedTile(fallback);
+          setBanner({
+            tone: 'warning',
+            message: `Ziel (${tile.q}, ${tile.r}) ist blockiert – vorgeschlagenes Ausweichhex (${fallback.q}, ${fallback.r}).`,
+          });
+        } else {
+          setTargetTile(null);
+          setSelectedTile(tile);
+          setBanner({
+            tone: 'danger',
+            message: `Ziel (${tile.q}, ${tile.r}) ist blockiert und hat keine erreichbare Nachbarzelle.`,
+          });
+        }
+        setMode('inspect');
+        return;
+      }
+      setTargetTile(tile);
+      setSelectedTile(tile);
+      setMode('inspect');
+      setBanner({ tone: 'success', message: `Ziel gesetzt: (${tile.q}, ${tile.r}).` });
+    },
+    [findReachableNeighbor, startTile],
+  );
 
   const handleTileInteraction = useCallback(
     (tile: TileData) => {
@@ -155,32 +412,84 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     [assignStart, assignTarget, handleInspect, mode],
   );
 
-  const path = useMemo(() => {
+  const pathResult = useMemo<PathfindingResult | null>(() => {
     if (!startTile || !targetTile) {
-      return [] as TileData[];
+      return null;
     }
-    const coordinates = axialLine({ q: startTile.q, r: startTile.r }, { q: targetTile.q, r: targetTile.r });
-    return coordinates.map((coord) => tiles.find((tile) => tile.q === coord.q && tile.r === coord.r)).filter(Boolean) as TileData[];
-  }, [startTile, targetTile, tiles]);
+    return findRegionPath(
+      region,
+      { q: startTile.q, r: startTile.r },
+      { q: targetTile.q, r: targetTile.r },
+      traversalCost,
+    );
+  }, [region, startTile, targetTile, traversalCost]);
 
-  const pathPointString = useMemo(() => {
-    if (!startTile || !targetTile) {
-      return '';
-    }
-    const coordinates = axialLine({ q: startTile.q, r: startTile.r }, { q: targetTile.q, r: targetTile.r });
-    return coordinates
-      .map((coord) => {
-        const { x, y } = axialToPixel({ q: coord.q, r: coord.r }, MICRO_HEX_SIZE);
-        return `${x},${y}`;
-      })
-      .join(' ');
-  }, [startTile, targetTile]);
+  const pathCoordinates = pathResult?.status === 'success' ? pathResult.path : [];
 
-  const pathKeySet = useMemo(() => new Set(path.map((tile) => `${tile.q}_${tile.r}`)), [path]);
+  const pathPointString = useMemo(
+    () =>
+      pathCoordinates
+        .map((coord) => {
+          const cached = tilePositionLookup.get(`${coord.q}_${coord.r}`);
+          const { x, y } = cached ?? axialToPixel({ q: coord.q, r: coord.r }, MICRO_HEX_SIZE);
+          return `${x},${y}`;
+        })
+        .join(' '),
+    [pathCoordinates, tilePositionLookup],
+  );
+
+  const pathKeySet = useMemo(() => new Set(pathCoordinates.map((coord) => `${coord.q}_${coord.r}`)), [pathCoordinates]);
 
   const selectedTileId = selectedTile ? `${selectedTile.q}_${selectedTile.r}` : null;
   const startTileId = startTile ? `${startTile.q}_${startTile.r}` : null;
   const targetTileId = targetTile ? `${targetTile.q}_${targetTile.r}` : null;
+
+  const modeHint = useMemo(() => {
+    if (mode === 'start') {
+      return 'Modus: Startpunkt setzen – klicke ein Hex oder nutze Enter.';
+    }
+    if (mode === 'target') {
+      return 'Modus: Ziel setzen – klicke ein Hex oder nutze Enter.';
+    }
+    if (startTile && targetTile) {
+      return 'Pfad angezeigt – klicke ein Hex für Details.';
+    }
+    if (startTile) {
+      return 'Startpunkt fixiert – wähle ein Zielhex.';
+    }
+    if (targetTile) {
+      return 'Ziel ist gewählt – setze noch einen Startpunkt.';
+    }
+    return 'Erkunden – lege Start- und Zielhex fest, um einen Pfad zu berechnen.';
+  }, [mode, startTile, targetTile]);
+
+  const pathStatus = useMemo(() => {
+    if (!startTile && !targetTile) {
+      return { tone: 'info' as BannerTone, message: 'Wähle einen Startpunkt, um die Route zu planen.' };
+    }
+    if (startTile && !targetTile) {
+      return { tone: 'info' as BannerTone, message: 'Startpunkt fixiert – Zielhex auswählen.' };
+    }
+    if (!startTile && targetTile) {
+      return { tone: 'warning' as BannerTone, message: 'Ziel gewählt – setze zuerst einen Startpunkt.' };
+    }
+    if (!pathResult) {
+      return null;
+    }
+    if (pathResult.status === 'success') {
+      const steps = Math.max(pathResult.path.length - 1, 0);
+      const formattedCost = numberFormatter.format(pathResult.cost);
+      const stepLabel = steps === 1 ? 'Sprung' : 'Sprünge';
+      return {
+        tone: 'success' as BannerTone,
+        message: `Pfad gefunden – ${steps} ${stepLabel} • Gesamtkosten ${formattedCost}`,
+      };
+    }
+    return {
+      tone: failureTones[pathResult.reason],
+      message: failureMessages[pathResult.reason],
+    };
+  }, [numberFormatter, pathResult, startTile, targetTile]);
 
   const describeTile = useCallback(
     (tile: TileData) => {
@@ -230,6 +539,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
                 setStartTile(null);
                 setTargetTile(null);
                 setMode('inspect');
+                setBanner(null);
               }}
             >
               Pfad zurücksetzen
@@ -275,8 +585,19 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
             })}
           </div>
         </div>
+        <div className="flex flex-wrap gap-2">
+          <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wide ${toneClasses.info}`}>
+            {modeHint}
+          </span>
+          {banner ? (
+            <span className={`rounded-full border px-3 py-1 text-xs uppercase tracking-wide ${toneClasses[banner.tone]}`}>
+              {banner.message}
+            </span>
+          ) : null}
+        </div>
         <div className="flex-1 overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-900/60 shadow-inner">
-          <svg role="presentation" className="h-full w-full" viewBox="-140 -140 280 280" preserveAspectRatio="xMidYMid meet">
+          <div className="relative h-full w-full">
+            <svg role="presentation" className="h-full w-full" viewBox="-140 -140 280 280" preserveAspectRatio="xMidYMid meet">
             <defs>
               <radialGradient id="region-center" cx="50%" cy="48%" r="60%">
                 <stop offset="0%" stopColor="rgba(34,211,238,0.55)" />
@@ -286,9 +607,44 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
               <filter id="region-hex-shadow" x="-30%" y="-30%" width="160%" height="160%">
                 <feDropShadow dx="0" dy="3" stdDeviation="3" floodColor="rgba(15,23,42,0.8)" floodOpacity="0.5" />
               </filter>
+              <pattern
+                id="region-unsettleable-hatch"
+                width="6"
+                height="6"
+                patternUnits="userSpaceOnUse"
+                patternTransform="rotate(45)"
+              >
+                <rect width="6" height="6" fill="rgba(127,29,29,0.12)" />
+                <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(248,113,113,0.55)" strokeWidth="2" />
+              </pattern>
             </defs>
             <rect x="-600" y="-600" width="1200" height="1200" fill="#020617" />
             <circle cx={0} cy={0} r={REGION_RADIUS * MICRO_HEX_SIZE * 2.8} fill="url(#region-center)" />
+            {staticLayer ? (
+              <image
+                href={staticLayer.href}
+                x={staticLayer.origin.x}
+                y={staticLayer.origin.y}
+                width={staticLayer.width}
+                height={staticLayer.height}
+                preserveAspectRatio="none"
+                style={{ imageRendering: 'auto' }}
+              />
+            ) : (
+              <>
+                {backgroundPixelEntries.map(({ q, r, x, y }) => (
+                  <HexPolygon
+                    key={`bg-${q}-${r}`}
+                    cx={x}
+                    cy={y}
+                    size={MICRO_HEX_SIZE * 1.05}
+                    stroke="rgba(148,163,184,0.08)"
+                    fill={((q + r) & 1) === 0 ? 'rgba(15,23,42,0.25)' : 'rgba(15,23,42,0.18)'}
+                    strokeWidth={0.75}
+                  />
+                ))}
+              </>
+            )}
             {pathPointString ? (
               <polyline
                 points={pathPointString}
@@ -299,22 +655,12 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
                 strokeLinecap="round"
               />
             ) : null}
-            {backgroundTiles.map(({ q, r }) => {
-              const { x, y } = axialToPixel({ q, r }, MICRO_HEX_SIZE * 1.05);
-              return (
-                <HexPolygon
-                  key={`bg-${q}-${r}`}
-                  cx={x}
-                  cy={y}
-                  size={MICRO_HEX_SIZE * 1.05}
-                  stroke="rgba(148,163,184,0.08)"
-                  fill={((q + r) & 1) === 0 ? 'rgba(15,23,42,0.25)' : 'rgba(15,23,42,0.18)'}
-                  strokeWidth={0.75}
-                />
-              );
-            })}
             {tiles.map((tile) => {
-              const { x, y } = axialToPixel({ q: tile.q, r: tile.r }, MICRO_HEX_SIZE);
+              const position = tilePositionLookup.get(`${tile.q}_${tile.r}`);
+              if (!position) {
+                return null;
+              }
+              const { x, y } = position;
               const key = `${tile.q}_${tile.r}`;
               const isSelected = selectedTileId === key;
               const isStart = startTileId === key;
@@ -323,6 +669,15 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
               const matchesFilter = matchesAllianceFilter(tile);
               const isDimmed = filterIsActive && !matchesFilter;
               const allianceMeta = tile.allianceId ? alliancesById.get(tile.allianceId) : undefined;
+              const defaultStroke = tile.settleable ? '#1e293b' : 'rgba(248,113,113,0.7)';
+              const baseStrokeWidth = tile.settleable ? 1.75 : 2.1;
+              const pointerFill = staticLayer
+                ? 'rgba(255,255,255,0.0001)'
+                : tile.settleable
+                  ? biomeFill(tile.biome)
+                  : 'url(#region-unsettleable-hatch)';
+              const pointerStroke = staticLayer ? 'rgba(0,0,0,0)' : isSelected ? '#fbbf24' : defaultStroke;
+              const pointerStrokeWidth = staticLayer ? 0.001 : isSelected ? 3 : baseStrokeWidth;
               const overlayFill = allianceMeta
                 ? applyAlpha(allianceMeta.color, matchesFilter ? 0.28 : 0.12)
                 : undefined;
@@ -341,16 +696,26 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
                   role="button"
                   aria-label={describeTile(tile)}
                   aria-pressed={isSelected}
-                  style={{ cursor: 'pointer', opacity: isDimmed ? 0.32 : 1 }}
+                  style={{ cursor: 'pointer', opacity: isDimmed ? 0.32 : 1, transition: 'opacity 180ms ease' }}
                 >
                   <HexPolygon
                     cx={x}
                     cy={y}
                     size={MICRO_HEX_SIZE}
-                    stroke={isSelected ? '#fbbf24' : '#1e293b'}
-                    fill={biomeFill(tile.biome)}
-                    strokeWidth={isSelected ? 3 : 1.75}
+                    stroke={pointerStroke}
+                    fill={pointerFill}
+                    strokeWidth={pointerStrokeWidth}
                   />
+                  {staticLayer && isSelected ? (
+                    <HexPolygon
+                      cx={x}
+                      cy={y}
+                      size={MICRO_HEX_SIZE}
+                      stroke="#fbbf24"
+                      fill="none"
+                      strokeWidth={3}
+                    />
+                  ) : null}
                   {overlayFill ? (
                     <HexPolygon
                       cx={x}
@@ -373,12 +738,6 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
                   ) : null}
                   {tile.poi?.length ? (
                     <circle cx={x} cy={y} r={6} fill="rgba(148,163,184,0.35)" stroke="#38bdf8" strokeWidth={1.5} />
-                  ) : null}
-                  {!tile.settleable ? (
-                    <line x1={x - 12} y1={y - 12} x2={x + 12} y2={y + 12} stroke="rgba(248,113,113,0.85)" strokeWidth={2} />
-                  ) : null}
-                  {!tile.settleable ? (
-                    <line x1={x + 12} y1={y - 12} x2={x - 12} y2={y + 12} stroke="rgba(248,113,113,0.85)" strokeWidth={2} />
                   ) : null}
                   {isStart ? (
                     <text
@@ -423,6 +782,42 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
               );
             })}
           </svg>
+            {pathStatus ? (
+              <div
+                className={`pointer-events-none absolute left-4 top-4 flex max-w-xs rounded-full border px-4 py-1.5 text-[0.65rem] uppercase tracking-wide ${toneClasses[pathStatus.tone]}`}
+              >
+                {pathStatus.message}
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-800/40 bg-slate-950/40 p-3 text-[0.65rem] uppercase tracking-wide text-slate-200">
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-3 rounded-full border border-emerald-400/70 bg-emerald-500/50" aria-hidden="true" />
+            <span>Besiedelbar</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span
+              className="h-3 w-3 rounded-full border border-rose-500/60"
+              style={{
+                backgroundImage: 'repeating-linear-gradient(45deg, rgba(248,113,113,0.5), rgba(248,113,113,0.5) 2px, rgba(127,29,29,0.2) 2px, rgba(127,29,29,0.2) 4px)',
+              }}
+              aria-hidden="true"
+            />
+            <span>Unbewohnbar</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-6 rounded-full border border-cyan-400/70 bg-cyan-500/40" aria-hidden="true" />
+            <span>Pfad</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-6 rounded-full border border-yellow-400/70 bg-yellow-500/30" aria-hidden="true" />
+            <span>Start/Ziel-Markierung</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="h-3 w-3 rounded-full border border-slate-200/40 bg-slate-200/60" aria-hidden="true" />
+            <span>Bandenfarbe</span>
+          </div>
         </div>
         {selectedTile ? (
           <div className="rounded-2xl border border-yellow-800/30 bg-black/40 p-4 text-sm text-slate-100">
@@ -485,6 +880,77 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
       </aside>
     </div>
   );
+};
+
+const traceHexPath = (context: CanvasRenderingContext2D, cx: number, cy: number, size: number) => {
+  context.beginPath();
+  for (let index = 0; index < 6; index += 1) {
+    const angle = ((60 * index - 30) * Math.PI) / 180;
+    const px = cx + size * Math.cos(angle);
+    const py = cy + size * Math.sin(angle);
+    if (index === 0) {
+      context.moveTo(px, py);
+    } else {
+      context.lineTo(px, py);
+    }
+  }
+  context.closePath();
+};
+
+const drawBackgroundHex = (
+  context: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  even: boolean,
+) => {
+  traceHexPath(context, cx, cy, size);
+  context.fillStyle = even ? 'rgba(15,23,42,0.25)' : 'rgba(15,23,42,0.18)';
+  context.fill();
+  traceHexPath(context, cx, cy, size);
+  context.lineWidth = 0.75;
+  context.strokeStyle = 'rgba(148,163,184,0.08)';
+  context.stroke();
+};
+
+const drawRegionHex = (
+  context: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  tile: TileData,
+  size: number,
+) => {
+  traceHexPath(context, cx, cy, size);
+  if (tile.settleable) {
+    context.fillStyle = biomeFill(tile.biome);
+    context.fill();
+  } else {
+    context.fillStyle = 'rgba(127,29,29,0.12)';
+    context.fill();
+    context.save();
+    traceHexPath(context, cx, cy, size);
+    context.clip();
+    context.save();
+    context.translate(cx, cy);
+    context.rotate(Math.PI / 4);
+    const extent = size * 3;
+    context.fillStyle = 'rgba(127,29,29,0.12)';
+    context.fillRect(-extent, -extent, extent * 2, extent * 2);
+    context.strokeStyle = 'rgba(248,113,113,0.55)';
+    context.lineWidth = 2;
+    for (let offset = -extent * 2; offset <= extent * 2; offset += 6) {
+      context.beginPath();
+      context.moveTo(offset, -extent * 2);
+      context.lineTo(offset, extent * 2);
+      context.stroke();
+    }
+    context.restore();
+    context.restore();
+  }
+  traceHexPath(context, cx, cy, size);
+  context.lineWidth = tile.settleable ? 1.75 : 2.1;
+  context.strokeStyle = tile.settleable ? '#1e293b' : 'rgba(248,113,113,0.7)';
+  context.stroke();
 };
 
 const HexPolygon: React.FC<HexPolygonProps> = React.memo(
