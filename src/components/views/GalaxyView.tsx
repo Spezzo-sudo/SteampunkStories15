@@ -5,6 +5,7 @@ import { useDirectoryStore } from '@/store/directoryStore';
 import { useAllianceStore } from '@/store/allianceStore';
 import HexMap from '@/components/galaxy/HexMap';
 import SystemModal from '@/components/galaxy/SystemModal';
+import SystemPanel from '@/components/galaxy/SystemPanel';
 import GalaxyLegend from '@/components/galaxy/GalaxyLegend';
 import VirtualList from '@/lib/virtualList';
 import { formatSystemCoordinate, parseSystemCoordinate } from '@/lib/hex';
@@ -14,6 +15,9 @@ import SystemsSlimTable from '@/components/galaxy/SystemsSlimTable';
 import { FOCUS_OUTLINE } from '@/styles/tokens';
 import { useMissionStore } from '@/store/missionStore';
 import { ALL_BIOMES, BIOMES } from '@/constants/biomes';
+import BottomSheet from '@/components/ui/BottomSheet';
+import LayoutSwitch from '@/components/layout/LayoutSwitch';
+import { useEffectiveLayout } from '@/hooks/useEffectiveLayout';
 
 const ROW_HEIGHT = 76;
 const MIN_ZOOM = 0.45;
@@ -306,6 +310,7 @@ export default function GalaxyView(): JSX.Element {
   const [isMapExpanded, setIsMapExpanded] = useState(false);
   const [mapHeight, setMapHeight] = useState(640);
   const [tableHeight, setTableHeight] = useState(240);
+  const layout = useEffectiveLayout();
   const sectorInitRef = useRef(false);
 
   const selectedSystem = useMemo(
@@ -327,7 +332,7 @@ export default function GalaxyView(): JSX.Element {
     return () => window.removeEventListener('resize', updateHeights);
   }, []);
 
-useEffect(() => {
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const sysParam = params.get('sys');
     if (!sysParam) {
@@ -345,9 +350,11 @@ useEffect(() => {
     );
     if (system) {
       setSelectedSystemId(system.id);
-      setModalSystemId(system.id);
+      if (layout === 'desktop') {
+        setModalSystemId(system.id);
+      }
     }
-  }, [systems]);
+  }, [layout, systems]);
 
   useEffect(() => {
     if (!selectedSystem) {
@@ -357,6 +364,12 @@ useEffect(() => {
     params.set('sys', formatSystemCoordinate(selectedSystem));
     window.history.replaceState(null, '', `?${params.toString()}`);
   }, [selectedSystem]);
+
+  useEffect(() => {
+    if (layout !== 'desktop' && modalSystemId) {
+      setModalSystemId(null);
+    }
+  }, [layout, modalSystemId]);
 
   const biomeOptions = useMemo(
     () => Object.entries(BIOME_STYLES) as [PlanetBiome, { label: string; fill: string; stroke: string }][],
@@ -606,14 +619,18 @@ useEffect(() => {
       focusChunkForSystem(system);
     }
     setSelectedSystemId(row.id);
-    setModalSystemId(row.id);
+    if (layout === 'desktop') {
+      setModalSystemId(row.id);
+    }
     setZoom((value) => (value < 1.4 ? 1.4 : value));
   };
 
   const handleMapSelect = (system: GalaxySystem) => {
     focusChunkForSystem(system);
     setSelectedSystemId(system.id);
-    setModalSystemId(system.id);
+    if (layout === 'desktop') {
+      setModalSystemId(system.id);
+    }
   };
 
   const currentPlayer = players.find((player) => player.id === currentPlayerId) ?? null;
@@ -646,13 +663,21 @@ useEffect(() => {
     planMission({ targetPlanetId: planet.id, missionType: type });
   };
 
+  const handleCloseDetails = () => {
+    setSelectedSystemId(null);
+    setModalSystemId(null);
+  };
+
   return (
     <section className="space-y-6 pb-16">
-      <header className="space-y-1">
-        <h2 className="text-[clamp(1.8rem,1.2vw+1.5rem,2.4rem)] font-cinzel text-yellow-300">Galaxie v3</h2>
-        <p className="text-sm text-gray-300">
-          Filtere Systeme für 100+ Kommandanten, nutze Deep-Links und plane Einsätze direkt auf der Karte.
-        </p>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-1">
+          <h2 className="text-[clamp(1.8rem,1.2vw+1.5rem,2.4rem)] font-cinzel text-yellow-300">Galaxie v3</h2>
+          <p className="text-sm text-gray-300">
+            Filtere Systeme für 100+ Kommandanten, nutze Deep-Links und plane Einsätze direkt auf der Karte.
+          </p>
+        </div>
+        <LayoutSwitch />
       </header>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <div className="space-y-4">
@@ -868,56 +893,80 @@ useEffect(() => {
         </div>
         <div className="space-y-4">
           <div className="relative">
-            <div className="absolute left-4 top-4 z-[55]">
-              <button
-                type="button"
-                onClick={() => setIsMapExpanded(true)}
-                className={`rounded-md border border-yellow-800/40 bg-black/60 px-3 py-1 text-xs uppercase tracking-wide text-yellow-100 hover:bg-yellow-800/40 hover:text-white ${FOCUS_OUTLINE.className}`}
-              >
-                Karte vergroessern
-              </button>
-            </div>
-            <HexMap
-              systems={sectorFilteredSystems}
-              players={players}
-              alliances={alliances}
-              selectedSystemId={selectedSystemId}
-              onSelect={handleMapSelect}
-              zoom={zoom}
-              onZoomChange={setZoom}
-              filteredSystemIds={filteredSystemIds}
-              highlightedAllianceIds={selectedAllianceIds}
-              height={520}
-            />
-            <div className="absolute bottom-4 right-4 z-40">
-              <div className="inline-flex flex-col gap-2 rounded-xl border border-yellow-800/30 bg-black/60 p-2 shadow-lg">
+            <div className={`relative ${layout === 'desktop' ? 'pr-[min(420px,36vw)]' : ''}`}>
+              <div className="absolute left-4 top-4 z-[55]">
                 <button
                   type="button"
-                  onClick={() =>
-                    setZoom((value) => Math.min(MAX_ZOOM, Number((value + ZOOM_STEP).toFixed(2))))
-                  }
-                  className={`rounded-md border border-yellow-800/40 px-2 py-1 text-sm text-yellow-100 ${FOCUS_OUTLINE.className}`}
+                  onClick={() => setIsMapExpanded(true)}
+                  className={`rounded-md border border-yellow-800/40 bg-black/60 px-3 py-1 text-xs uppercase tracking-wide text-yellow-100 hover:bg-yellow-800/40 hover:text-white ${FOCUS_OUTLINE.className}`}
                 >
-                  +
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setZoom((value) => Math.max(MIN_ZOOM, Number((value - ZOOM_STEP).toFixed(2))))
-                  }
-                  className={`rounded-md border border-yellow-800/40 px-2 py-1 text-sm text-yellow-100 ${FOCUS_OUTLINE.className}`}
-                >
-                  −
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setZoom(1)}
-                  className={`rounded-md border border-yellow-800/40 px-2 py-1 text-xs text-yellow-100 ${FOCUS_OUTLINE.className}`}
-                >
-                  Reset
+                  Karte vergroessern
                 </button>
               </div>
+              <HexMap
+                systems={sectorFilteredSystems}
+                players={players}
+                alliances={alliances}
+                selectedSystemId={selectedSystemId}
+                onSelect={handleMapSelect}
+                zoom={zoom}
+                onZoomChange={setZoom}
+                filteredSystemIds={filteredSystemIds}
+                highlightedAllianceIds={selectedAllianceIds}
+                height={520}
+              />
+              <div className="absolute bottom-4 right-4 z-40">
+                <div className="inline-flex flex-col gap-2 rounded-xl border border-yellow-800/30 bg-black/60 p-2 shadow-lg">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setZoom((value) => Math.min(MAX_ZOOM, Number((value + ZOOM_STEP).toFixed(2))))
+                    }
+                    className={`rounded-md border border-yellow-800/40 px-2 py-1 text-sm text-yellow-100 ${FOCUS_OUTLINE.className}`}
+                  >
+                    +
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setZoom((value) => Math.max(MIN_ZOOM, Number((value - ZOOM_STEP).toFixed(2))))
+                    }
+                    className={`rounded-md border border-yellow-800/40 px-2 py-1 text-sm text-yellow-100 ${FOCUS_OUTLINE.className}`}
+                  >
+                    −
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setZoom(1)}
+                    className={`rounded-md border border-yellow-800/40 px-2 py-1 text-xs text-yellow-100 ${FOCUS_OUTLINE.className}`}
+                  >
+                    Reset
+                  </button>
+                </div>
+              </div>
             </div>
+            {layout === 'desktop' && (
+              <aside className="pointer-events-auto absolute inset-y-0 right-0 z-40 w-[min(420px,36vw)]">
+                <div className="flex h-full flex-col rounded-l-2xl border border-yellow-800/40 bg-black/70 backdrop-blur">
+                  <SystemPanel
+                    system={selectedSystem}
+                    variant="desktop"
+                    onClose={handleCloseDetails}
+                    onJumpToPlanet={(_planetId) => {
+                      setModalSystemId(null);
+                    }}
+                    onPlanMission={handlePlanMission}
+                    onFavorite={(planetId) => favoritePlanet(planetId)}
+                    getPlayerName={getPlayerName}
+                    getAllianceTag={getAllianceTag}
+                    onInspectPlayer={openProfile}
+                    favorites={favorites}
+                    currentPlayerId={currentPlayerId}
+                    currentAllianceId={currentAllianceId}
+                  />
+                </div>
+              </aside>
+            )}
           </div>
           <GalaxyLegend biomes={legendBiomes} alliances={legendAlliances} />
           <ChatSidebar
@@ -926,7 +975,7 @@ useEffect(() => {
           />
         </div>
       </div>
-      {modalSystemId && selectedSystem && (
+      {layout === 'desktop' && modalSystemId && selectedSystem && (
         <SystemModal
           system={selectedSystem}
           onClose={() => setModalSystemId(null)}
@@ -942,6 +991,29 @@ useEffect(() => {
           currentPlayerId={currentPlayerId}
           currentAllianceId={currentAllianceId}
         />
+      )}
+      {layout === 'mobile' && (
+        <BottomSheet
+          open={layout === 'mobile' && Boolean(selectedSystem)}
+          onClose={handleCloseDetails}
+          initialSnap="half"
+          ariaLabel="Systemdetails"
+        >
+          <SystemPanel
+            system={selectedSystem}
+            variant="mobile"
+            onClose={handleCloseDetails}
+            onJumpToPlanet={(_planetId) => handleCloseDetails()}
+            onPlanMission={handlePlanMission}
+            onFavorite={(planetId) => favoritePlanet(planetId)}
+            getPlayerName={getPlayerName}
+            getAllianceTag={getAllianceTag}
+            onInspectPlayer={openProfile}
+            favorites={favorites}
+            currentPlayerId={currentPlayerId}
+            currentAllianceId={currentAllianceId}
+          />
+        </BottomSheet>
       )}
       {isMapExpanded && (
         <MapOverlay

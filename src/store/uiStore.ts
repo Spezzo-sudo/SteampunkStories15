@@ -14,22 +14,27 @@ export interface ToastMessage {
   createdAt: number;
 }
 
+export type LayoutPreference = 'auto' | 'mobile' | 'desktop';
+
 interface UiState {
   toasts: ToastMessage[];
+  layoutPref: LayoutPreference;
 }
 
 interface UiActions {
   pushToast: (toast: Omit<ToastMessage, 'id' | 'createdAt'>) => void;
   dismissToast: (id: string) => void;
   clearToasts: () => void;
+  setLayoutPref: (preference: LayoutPreference) => void;
 }
 
 /**
- * Global UI state store that keeps ephemeral interface feedback such as toast messages.
+ * Global UI state store that keeps ephemeral interface feedback such as toast messages and layout preferences.
  * It enables non-component modules (stores, actions) to surface notifications to the player.
  */
 export const useUiStore = create<UiState & UiActions>((set) => ({
   toasts: [],
+  layoutPref: 'auto',
   pushToast: (toast) => {
     set((state) => ({
       toasts: [
@@ -48,4 +53,5 @@ export const useUiStore = create<UiState & UiActions>((set) => ({
     }));
   },
   clearToasts: () => set({ toasts: [] }),
+  setLayoutPref: (preference) => set({ layoutPref: preference }),
 }));
