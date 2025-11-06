@@ -35,6 +35,18 @@ interface BannerState {
   message: string;
 }
 
+interface PositionedAxial extends Axial {
+  x: number;
+  y: number;
+}
+
+interface RegionStaticLayer {
+  href: string;
+  width: number;
+  height: number;
+  origin: { x: number; y: number };
+}
+
 const neighborOffsets: Axial[] = [
   { q: 1, r: 0 },
   { q: 1, r: -1 },
@@ -82,6 +94,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     [region.tiles],
   );
   const backgroundTiles = useMemo(() => axialDisk(REGION_RADIUS + 2), []);
+  const [staticLayer, setStaticLayer] = useState<RegionStaticLayer | null>(null);
   const [selectedTile, setSelectedTile] = useState<TileData | null>(null);
   const [startTile, setStartTile] = useState<TileData | null>(null);
   const [targetTile, setTargetTile] = useState<TileData | null>(null);
@@ -112,6 +125,124 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     setMode('inspect');
     setBanner(null);
   }, [region.regionId]);
+
+  const tilePixelEntries = useMemo<PositionedAxial[]>(
+    () =>
+      tiles.map((tile) => {
+        const { x, y } = axialToPixel({ q: tile.q, r: tile.r }, MICRO_HEX_SIZE);
+        return { q: tile.q, r: tile.r, x, y };
+      }),
+    [tiles],
+  );
+
+  const tilePositionLookup = useMemo(() => {
+    const lookup = new Map<string, PositionedAxial>();
+    tilePixelEntries.forEach((entry) => {
+      lookup.set(`${entry.q}_${entry.r}`, entry);
+    });
+    return lookup;
+  }, [tilePixelEntries]);
+
+  const backgroundPixelEntries = useMemo<PositionedAxial[]>(
+    () =>
+      backgroundTiles.map((coord) => {
+        const { x, y } = axialToPixel({ q: coord.q, r: coord.r }, MICRO_HEX_SIZE * 1.05);
+        return { q: coord.q, r: coord.r, x, y };
+      }),
+    [backgroundTiles],
+  );
+
+  const staticBounds = useMemo(() => {
+    const combined = [...tilePixelEntries, ...backgroundPixelEntries];
+    if (combined.length === 0) {
+      return null;
+    }
+    const padding = MICRO_HEX_SIZE * 2.4;
+    const initial = combined[0];
+    const bounds = combined.reduce(
+      (acc, coord) => ({
+        minX: Math.min(acc.minX, coord.x),
+        maxX: Math.max(acc.maxX, coord.x),
+        minY: Math.min(acc.minY, coord.y),
+        maxY: Math.max(acc.maxY, coord.y),
+      }),
+      {
+        minX: initial.x,
+        maxX: initial.x,
+        minY: initial.y,
+        maxY: initial.y,
+      },
+    );
+    const minX = bounds.minX - padding;
+    const maxX = bounds.maxX + padding;
+    const minY = bounds.minY - padding;
+    const maxY = bounds.maxY + padding;
+    return {
+      minX,
+      maxX,
+      minY,
+      maxY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  }, [backgroundPixelEntries, tilePixelEntries]);
+
+  useEffect(() => {
+    if (!staticBounds) {
+      setStaticLayer(null);
+      return;
+    }
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    let cancelled = false;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.ceil(staticBounds.width));
+    canvas.height = Math.max(1, Math.ceil(staticBounds.height));
+    const context = canvas.getContext('2d');
+    if (!context) {
+      setStaticLayer(null);
+      return;
+    }
+
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = '#020617';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    const project = (coord: PositionedAxial) => ({
+      x: coord.x - staticBounds.minX,
+      y: coord.y - staticBounds.minY,
+    });
+
+    backgroundPixelEntries.forEach((coord) => {
+      const projected = project(coord);
+      drawBackgroundHex(context, projected.x, projected.y, MICRO_HEX_SIZE * 1.05, ((coord.q + coord.r) & 1) === 0);
+    });
+
+    tiles.forEach((tile) => {
+      const position = tilePositionLookup.get(`${tile.q}_${tile.r}`);
+      if (!position) {
+        return;
+      }
+      const projected = project(position);
+      drawRegionHex(context, projected.x, projected.y, tile, MICRO_HEX_SIZE);
+    });
+
+    const href = canvas.toDataURL('image/png');
+    if (!cancelled) {
+      setStaticLayer({
+        href,
+        width: staticBounds.width,
+        height: staticBounds.height,
+        origin: { x: staticBounds.minX, y: staticBounds.minY },
+      });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [backgroundPixelEntries, staticBounds, tilePositionLookup, tiles]);
 
   const alliancesById = useMemo(
     () =>
@@ -295,14 +426,17 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
 
   const pathCoordinates = pathResult?.status === 'success' ? pathResult.path : [];
 
-  const pathPointString = useMemo(() =>
-    pathCoordinates
-      .map((coord) => {
-        const { x, y } = axialToPixel({ q: coord.q, r: coord.r }, MICRO_HEX_SIZE);
-        return `${x},${y}`;
-      })
-      .join(' '),
-  [pathCoordinates]);
+  const pathPointString = useMemo(
+    () =>
+      pathCoordinates
+        .map((coord) => {
+          const cached = tilePositionLookup.get(`${coord.q}_${coord.r}`);
+          const { x, y } = cached ?? axialToPixel({ q: coord.q, r: coord.r }, MICRO_HEX_SIZE);
+          return `${x},${y}`;
+        })
+        .join(' '),
+    [pathCoordinates, tilePositionLookup],
+  );
 
   const pathKeySet = useMemo(() => new Set(pathCoordinates.map((coord) => `${coord.q}_${coord.r}`)), [pathCoordinates]);
 
@@ -486,6 +620,31 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
             </defs>
             <rect x="-600" y="-600" width="1200" height="1200" fill="#020617" />
             <circle cx={0} cy={0} r={REGION_RADIUS * MICRO_HEX_SIZE * 2.8} fill="url(#region-center)" />
+            {staticLayer ? (
+              <image
+                href={staticLayer.href}
+                x={staticLayer.origin.x}
+                y={staticLayer.origin.y}
+                width={staticLayer.width}
+                height={staticLayer.height}
+                preserveAspectRatio="none"
+                style={{ imageRendering: 'auto' }}
+              />
+            ) : (
+              <>
+                {backgroundPixelEntries.map(({ q, r, x, y }) => (
+                  <HexPolygon
+                    key={`bg-${q}-${r}`}
+                    cx={x}
+                    cy={y}
+                    size={MICRO_HEX_SIZE * 1.05}
+                    stroke="rgba(148,163,184,0.08)"
+                    fill={((q + r) & 1) === 0 ? 'rgba(15,23,42,0.25)' : 'rgba(15,23,42,0.18)'}
+                    strokeWidth={0.75}
+                  />
+                ))}
+              </>
+            )}
             {pathPointString ? (
               <polyline
                 points={pathPointString}
@@ -496,22 +655,12 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
                 strokeLinecap="round"
               />
             ) : null}
-            {backgroundTiles.map(({ q, r }) => {
-              const { x, y } = axialToPixel({ q, r }, MICRO_HEX_SIZE * 1.05);
-              return (
-                <HexPolygon
-                  key={`bg-${q}-${r}`}
-                  cx={x}
-                  cy={y}
-                  size={MICRO_HEX_SIZE * 1.05}
-                  stroke="rgba(148,163,184,0.08)"
-                  fill={((q + r) & 1) === 0 ? 'rgba(15,23,42,0.25)' : 'rgba(15,23,42,0.18)'}
-                  strokeWidth={0.75}
-                />
-              );
-            })}
             {tiles.map((tile) => {
-              const { x, y } = axialToPixel({ q: tile.q, r: tile.r }, MICRO_HEX_SIZE);
+              const position = tilePositionLookup.get(`${tile.q}_${tile.r}`);
+              if (!position) {
+                return null;
+              }
+              const { x, y } = position;
               const key = `${tile.q}_${tile.r}`;
               const isSelected = selectedTileId === key;
               const isStart = startTileId === key;
@@ -520,8 +669,15 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
               const matchesFilter = matchesAllianceFilter(tile);
               const isDimmed = filterIsActive && !matchesFilter;
               const allianceMeta = tile.allianceId ? alliancesById.get(tile.allianceId) : undefined;
-              const tileStroke = tile.settleable ? (isSelected ? '#fbbf24' : '#1e293b') : 'rgba(248,113,113,0.7)';
-              const tileFill = tile.settleable ? biomeFill(tile.biome) : 'url(#region-unsettleable-hatch)';
+              const defaultStroke = tile.settleable ? '#1e293b' : 'rgba(248,113,113,0.7)';
+              const baseStrokeWidth = tile.settleable ? 1.75 : 2.1;
+              const pointerFill = staticLayer
+                ? 'rgba(255,255,255,0.0001)'
+                : tile.settleable
+                  ? biomeFill(tile.biome)
+                  : 'url(#region-unsettleable-hatch)';
+              const pointerStroke = staticLayer ? 'rgba(0,0,0,0)' : isSelected ? '#fbbf24' : defaultStroke;
+              const pointerStrokeWidth = staticLayer ? 0.001 : isSelected ? 3 : baseStrokeWidth;
               const overlayFill = allianceMeta
                 ? applyAlpha(allianceMeta.color, matchesFilter ? 0.28 : 0.12)
                 : undefined;
@@ -546,10 +702,20 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
                     cx={x}
                     cy={y}
                     size={MICRO_HEX_SIZE}
-                    stroke={tileStroke}
-                    fill={tileFill}
-                    strokeWidth={isSelected ? 3 : tile.settleable ? 1.75 : 2.1}
+                    stroke={pointerStroke}
+                    fill={pointerFill}
+                    strokeWidth={pointerStrokeWidth}
                   />
+                  {staticLayer && isSelected ? (
+                    <HexPolygon
+                      cx={x}
+                      cy={y}
+                      size={MICRO_HEX_SIZE}
+                      stroke="#fbbf24"
+                      fill="none"
+                      strokeWidth={3}
+                    />
+                  ) : null}
                   {overlayFill ? (
                     <HexPolygon
                       cx={x}
@@ -714,6 +880,77 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
       </aside>
     </div>
   );
+};
+
+const traceHexPath = (context: CanvasRenderingContext2D, cx: number, cy: number, size: number) => {
+  context.beginPath();
+  for (let index = 0; index < 6; index += 1) {
+    const angle = ((60 * index - 30) * Math.PI) / 180;
+    const px = cx + size * Math.cos(angle);
+    const py = cy + size * Math.sin(angle);
+    if (index === 0) {
+      context.moveTo(px, py);
+    } else {
+      context.lineTo(px, py);
+    }
+  }
+  context.closePath();
+};
+
+const drawBackgroundHex = (
+  context: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  even: boolean,
+) => {
+  traceHexPath(context, cx, cy, size);
+  context.fillStyle = even ? 'rgba(15,23,42,0.25)' : 'rgba(15,23,42,0.18)';
+  context.fill();
+  traceHexPath(context, cx, cy, size);
+  context.lineWidth = 0.75;
+  context.strokeStyle = 'rgba(148,163,184,0.08)';
+  context.stroke();
+};
+
+const drawRegionHex = (
+  context: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  tile: TileData,
+  size: number,
+) => {
+  traceHexPath(context, cx, cy, size);
+  if (tile.settleable) {
+    context.fillStyle = biomeFill(tile.biome);
+    context.fill();
+  } else {
+    context.fillStyle = 'rgba(127,29,29,0.12)';
+    context.fill();
+    context.save();
+    traceHexPath(context, cx, cy, size);
+    context.clip();
+    context.save();
+    context.translate(cx, cy);
+    context.rotate(Math.PI / 4);
+    const extent = size * 3;
+    context.fillStyle = 'rgba(127,29,29,0.12)';
+    context.fillRect(-extent, -extent, extent * 2, extent * 2);
+    context.strokeStyle = 'rgba(248,113,113,0.55)';
+    context.lineWidth = 2;
+    for (let offset = -extent * 2; offset <= extent * 2; offset += 6) {
+      context.beginPath();
+      context.moveTo(offset, -extent * 2);
+      context.lineTo(offset, extent * 2);
+      context.stroke();
+    }
+    context.restore();
+    context.restore();
+  }
+  traceHexPath(context, cx, cy, size);
+  context.lineWidth = tile.settleable ? 1.75 : 2.1;
+  context.strokeStyle = tile.settleable ? '#1e293b' : 'rgba(248,113,113,0.7)';
+  context.stroke();
 };
 
 const HexPolygon: React.FC<HexPolygonProps> = React.memo(

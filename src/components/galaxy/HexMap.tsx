@@ -43,6 +43,11 @@ interface PositionedSystem {
   biomeName?: string;
 }
 
+interface BucketIndex {
+  size: number;
+  entries: Map<string, PositionedSystem[]>;
+}
+
 interface LayoutMetadata {
   entries: PositionedSystem[];
   bounds: {
@@ -55,6 +60,7 @@ interface LayoutMetadata {
     minY: number;
     maxY: number;
   } | null;
+  buckets: BucketIndex | null;
 }
 
 const HEX_SIZE = 48;
@@ -63,6 +69,7 @@ const MIN_ZOOM = 0.35;
 const MAX_ZOOM = 3.0;
 const LOD_MINOR_GRID = 1.5;
 const DEFAULT_MAP_HEIGHT = 460;
+const BUCKET_SIZE = 256;
 
 const aggregateOwners = (
   system: GalaxySystem,
@@ -160,7 +167,7 @@ const buildLayout = (
   highlightedAllianceIds: Set<string>,
 ): LayoutMetadata => {
   if (systems.length === 0) {
-    return { entries: [], bounds: null, contentBounds: null };
+    return { entries: [], bounds: null, contentBounds: null, buckets: null };
   }
 
   const alliancesById = new Map(alliances.map((alliance) => [alliance.id, alliance]));
@@ -246,10 +253,25 @@ const buildLayout = (
     },
   );
 
+  const buckets = new Map<string, PositionedSystem[]>();
+  const bucketSize = BUCKET_SIZE;
+  entries.forEach((entry) => {
+    const bucketX = Math.floor(entry.position.x / bucketSize);
+    const bucketY = Math.floor(entry.position.y / bucketSize);
+    const key = `${bucketX},${bucketY}`;
+    const bucketEntries = buckets.get(key);
+    if (bucketEntries) {
+      bucketEntries.push(entry);
+    } else {
+      buckets.set(key, [entry]);
+    }
+  });
+
   return {
     entries,
     bounds: { width, height },
     contentBounds,
+    buckets: { size: bucketSize, entries: buckets },
   };
 };
 
@@ -332,7 +354,7 @@ const HexMap: React.FC<HexMapProps> = ({
     [alliances, filteredSystemIds, highlightedSet, players, systems],
   );
 
-  const { entries, bounds, contentBounds } = layout;
+  const { entries, bounds, contentBounds, buckets } = layout;
 
   const viewHeight = bounds ? Math.max(bounds.height, getHexHeight(HEX_SIZE) * 8) : getHexHeight(HEX_SIZE) * 8;
   const currentZoom = panZoomState.z;
@@ -455,10 +477,38 @@ const HexMap: React.FC<HexMapProps> = ({
     const maxX = minX + worldWidth + padding * 2;
     const minY = -currentOffset.y - padding;
     const maxY = minY + worldHeight + padding * 2;
-    return entries.filter(
-      ({ position }) => position.x >= minX && position.x <= maxX && position.y >= minY && position.y <= maxY,
-    );
-  }, [bounds, currentOffset.x, currentOffset.y, currentZoom, entries, viewHeight]);
+
+    if (!buckets) {
+      return entries.filter(
+        ({ position }) => position.x >= minX && position.x <= maxX && position.y >= minY && position.y <= maxY,
+      );
+    }
+
+    const { size, entries: bucketEntries } = buckets;
+    const startBucketX = Math.floor(minX / size);
+    const endBucketX = Math.floor(maxX / size);
+    const startBucketY = Math.floor(minY / size);
+    const endBucketY = Math.floor(maxY / size);
+    const candidates: PositionedSystem[] = [];
+
+    for (let bucketX = startBucketX; bucketX <= endBucketX; bucketX += 1) {
+      for (let bucketY = startBucketY; bucketY <= endBucketY; bucketY += 1) {
+        const bucketKey = `${bucketX},${bucketY}`;
+        const bucket = bucketEntries.get(bucketKey);
+        if (!bucket) {
+          continue;
+        }
+        for (const entry of bucket) {
+          const { x, y } = entry.position;
+          if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+            candidates.push(entry);
+          }
+        }
+      }
+    }
+
+    return candidates;
+  }, [bounds, buckets, currentOffset.x, currentOffset.y, currentZoom, entries, viewHeight]);
 
   if (!bounds || entries.length === 0) {
     const fallbackHeight = getHexHeight(HEX_SIZE) * 6;
