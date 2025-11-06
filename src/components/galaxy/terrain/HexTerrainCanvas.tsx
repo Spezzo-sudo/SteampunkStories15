@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { axialToPixel } from '@/lib/hexMath';
+import { axialToPixel } from '@/lib/hex';
 import type { TerrainTile } from '@/components/galaxy/terrain/HexTerrainCanvas.types';
 
 export interface TerrainTile {
