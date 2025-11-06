@@ -1,0 +1,27 @@
+{
+  "regionId": "-1_2",
+  "RQ": -1,
+  "RR": 2,
+  "radius": 2,
+  "tiles": [
+    { "q": 0, "r": 0, "biome": "Dampfwiese", "settleable": true, "poi": ["Geothermische Quelle"] },
+    { "q": 1, "r": 0, "biome": "Steppe", "settleable": true },
+    { "q": 1, "r": -1, "biome": "Steppe", "settleable": true },
+    { "q": 0, "r": -1, "biome": "Wald", "settleable": true },
+    { "q": -1, "r": 0, "biome": "Wald", "settleable": true },
+    { "q": -1, "r": 1, "biome": "Kristallufer", "settleable": true },
+    { "q": 0, "r": 1, "biome": "Kristallufer", "settleable": true },
+    { "q": 1, "r": 1, "biome": "Dampfwiese", "settleable": true },
+    { "q": 2, "r": 0, "biome": "Wald", "settleable": true },
+    { "q": 2, "r": -1, "biome": "Hochland", "settleable": true },
+    { "q": 1, "r": -2, "biome": "Hochland", "settleable": true },
+    { "q": 0, "r": -2, "biome": "Moor", "settleable": false },
+    { "q": -1, "r": -1, "biome": "Moor", "settleable": false },
+    { "q": -2, "r": 0, "biome": "Steppe", "settleable": true },
+    { "q": -2, "r": 1, "biome": "Steppe", "settleable": true },
+    { "q": -1, "r": 2, "biome": "Dampfwiese", "settleable": true },
+    { "q": 0, "r": 2, "biome": "Wald", "settleable": true },
+    { "q": 1, "r": 2, "biome": "Kristallufer", "settleable": true, "poi": ["Schimmernde Terrassen"] },
+    { "q": 2, "r": -2, "biome": "Hochland", "settleable": true }
+  ]
+}

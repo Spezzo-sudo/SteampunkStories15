@@ -1,12 +1,46 @@
 import { AxialCoordinates, GalaxyCoordinates } from '@/types';
 
-const HEX_HEIGHT = Math.sqrt(3);
+/**
+ * Square root of three, reused across the hex math helpers.
+ */
+export const SQRT3 = Math.sqrt(3);
+
+const HEX_HEIGHT = SQRT3;
+
+/**
+ * Converts screen pixel coordinates back into fractional axial coordinates for a pointy-top layout.
+ */
+export const pixelToAxial = (x: number, y: number, size: number) => ({
+  q: (SQRT3 / 3 * x - y / 3) / size,
+  r: ((2 / 3) * y) / size,
+});
+
+/**
+ * Generates all axial coordinates inside a radius-N disk including the origin.
+ */
+export const axialDisk = (radius: number) => {
+  const points: AxialCoordinates[] = [];
+  for (let q = -radius; q <= radius; q += 1) {
+    const rMin = Math.max(-radius, -q - radius);
+    const rMax = Math.min(radius, -q + radius);
+    for (let r = rMin; r <= rMax; r += 1) {
+      points.push({ q, r });
+    }
+  }
+  return points;
+};
+
+/**
+ * Checks whether the provided axial coordinate lies inside a radius-N disk.
+ */
+export const inDisk = (q: number, r: number, radius: number) =>
+  Math.abs(q) <= radius && Math.abs(r) <= radius && Math.abs(q + r) <= radius;
 
 /**
  * Converts axial coordinates into pixel positions for a pointy-top hex layout.
  */
 export const axialToPixel = (axial: AxialCoordinates, size: number) => ({
-  x: size * (Math.sqrt(3) * axial.q + (Math.sqrt(3) / 2) * axial.r),
+  x: size * (SQRT3 * axial.q + (SQRT3 / 2) * axial.r),
   y: size * ((3 / 2) * axial.r),
 });
 
