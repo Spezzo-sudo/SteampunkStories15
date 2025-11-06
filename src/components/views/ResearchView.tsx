@@ -142,6 +142,8 @@ const ResearchView: React.FC = () => {
               level={currentLevel}
               targetLevel={targetLevel}
               description={tech.description}
+              image={tech.image}
+              imageAlt={`${tech.name} Forschungsgrafik`}
               upgradeCost={costForNextUpgrade}
               buildTime={buildTime}
               canAfford={affordable}

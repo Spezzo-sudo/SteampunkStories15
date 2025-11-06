@@ -40,6 +40,8 @@ const BuildingsView: React.FC = () => {
               level={currentLevel}
               targetLevel={targetLevel}
               description={building.description}
+              image={building.image}
+              imageAlt={`${building.name} Illustration`}
               upgradeCost={costForNextUpgrade}
               buildTime={buildTime}
               canAfford={affordable}

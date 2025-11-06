@@ -33,6 +33,7 @@ export interface TileData {
   r: number;
   biome: string;
   settleable: boolean;
+  allianceId?: string;
   poi?: string[];
 }
 

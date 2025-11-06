@@ -11,6 +11,7 @@ export interface Building {
   id: string;
   name: string;
   description: string;
+  image: string;
   baseCost: Resources;
   costMultiplier: number;
   baseProduction: Resources;
@@ -25,6 +26,7 @@ export interface Research {
   id: string;
   name: string;
   description: string;
+  image: string;
   baseCost: Resources;
   costMultiplier: number;
 }
@@ -33,6 +35,7 @@ export interface ShipBlueprint {
   id: string;
   name: string;
   description: string;
+  image: string;
   role: 'Aufklärung' | 'Transport' | 'Angriff' | 'Unterstützung';
   hangarSlots: number;
   baseCost: Resources;
