@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { MACRO_HEX_SIZE } from '@/constants/map';
-import { axialDisk, axialToPixel, computeHexBoundingBox, getHexEdgeMidpoints } from '@/lib/hex';
+import { axialDisk, axialToPixel, computeHexBoundingBox, getHexVertices } from '@/lib/hex';
 import LegendOverlay from '@/components/overlays/LegendOverlay';
 import DebugFab from '@/components/overlays/DebugFab';
 import { useMapStore, type LaneEdge, type RegionNode } from '@/store/mapStore';
@@ -32,44 +32,42 @@ interface LanePath {
 const edgeKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 const REGION_HEX_RADIUS = MACRO_HEX_SIZE;
 
-const selectEdgeMidpoint = (origin: { x: number; y: number }, target: { x: number; y: number }) => {
-  const edges = getHexEdgeMidpoints(origin.x, origin.y, REGION_HEX_RADIUS);
-  if (!edges.length) {
-    return { x: origin.x, y: origin.y };
-  }
+const edgeMidAtAngle = (angle: number, size: number) => {
+  const vertices = getHexVertices(0, 0, size);
+  const normalized = ((angle * 180) / Math.PI + 360) % 360;
+  const index = Math.round(normalized / 60) % 6;
+  const nextIndex = (index + 1) % 6;
+  const start = vertices[index];
+  const end = vertices[nextIndex];
+  return { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+};
 
-  const dx = target.x - origin.x;
-  const dy = target.y - origin.y;
-  const length = Math.hypot(dx, dy) || 1;
-  const dirX = dx / length;
-  const dirY = dy / length;
-
-  return edges.reduce<{ point: { x: number; y: number }; score: number }>(
-    (best, edge) => {
-      const ex = edge.x - origin.x;
-      const ey = edge.y - origin.y;
-      const edgeLength = Math.hypot(ex, ey) || 1;
-      const score = (ex / edgeLength) * dirX + (ey / edgeLength) * dirY;
-      if (score > best.score) {
-        return { point: edge, score };
-      }
-      return best;
-    },
-    { point: edges[0], score: Number.NEGATIVE_INFINITY },
-  ).point;
+const laneEndpoints = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+  const forwardAngle = Math.atan2(to.y - from.y, to.x - from.x);
+  const backwardAngle = Math.atan2(from.y - to.y, from.x - to.x);
+  const startOffset = edgeMidAtAngle(forwardAngle, REGION_HEX_RADIUS);
+  const endOffset = edgeMidAtAngle(backwardAngle, REGION_HEX_RADIUS);
+  return {
+    ax: from.x + startOffset.x,
+    ay: from.y + startOffset.y,
+    bx: to.x + endOffset.x,
+    by: to.y + endOffset.y,
+  };
 };
 
 const buildLaneCommand = (from: { x: number; y: number }, to: { x: number; y: number }) => {
-  const start = selectEdgeMidpoint(from, to);
-  const end = selectEdgeMidpoint(to, from);
-  const midX = (start.x + end.x) / 2;
-  const midY = (start.y + end.y) / 2;
-  const nx = -(end.y - start.y);
-  const ny = end.x - start.x;
-  const curvature = 0.18;
+  const { ax, ay, bx, by } = laneEndpoints(from, to);
+  const midX = (ax + bx) / 2;
+  const midY = (ay + by) / 2;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const length = Math.hypot(dx, dy) || 1;
+  const nx = -(dy / length);
+  const ny = dx / length;
+  const curvature = length * 0.18;
   const controlX = midX + nx * curvature;
   const controlY = midY + ny * curvature;
-  return `M ${start.x} ${start.y} Q ${controlX} ${controlY} ${end.x} ${end.y}`;
+  return `M ${ax} ${ay} Q ${controlX} ${controlY} ${bx} ${by}`;
 };
 
 const LanePathElement: React.FC<LanePath> = ({ d, active, locked }) => {

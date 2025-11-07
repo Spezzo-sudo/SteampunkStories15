@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AXIAL_DIRECTIONS, axialToPixel, pixelToAxial } from '@/lib/hex';
+import { axialToPixel, pixelToAxial } from '@/lib/hex';
+import { buildRegionHull } from '@/lib/regionGeometry';
 import {
   BIOME_STYLE,
   EDGE_ALPHA_RAW,
@@ -21,13 +22,14 @@ interface RegionViewProps {
 
 interface LaneGateDescriptor {
   id: string;
-  tile: TileData;
   x: number;
   y: number;
   label: string;
+  edgeDir: number;
 }
 
 const fallbackBiome: Biome = 'NE';
+const GATE_ARROWS = ['→', '↗', '↖', '←', '↙', '↘'];
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
@@ -67,13 +69,6 @@ const roundAxial = (value: { q: number; r: number }) => {
   return { q: rq, r: rr };
 };
 
-const distance = (a: { q: number; r: number }, b: { q: number; r: number }) => {
-  const dq = a.q - b.q;
-  const dr = a.r - b.r;
-  const ds = -a.q - a.r - (-b.q - b.r);
-  return (Math.abs(dq) + Math.abs(dr) + Math.abs(ds)) / 2;
-};
-
 const buildHexPath = (ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number) => {
   ctx.beginPath();
   for (let index = 0; index < 6; index += 1) {
@@ -104,7 +99,6 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   const panBy = useMapStore((state) => state.panBy);
   const zoomAt = useMapStore((state) => state.zoomAt);
   const fitRegionToViewport = useMapStore((state) => state.fitRegionToViewport);
-  const lanes = useMapStore((state) => state.lanes);
   const regions = useMapStore((state) => state.regions);
   const backToMacro = useMapStore((state) => state.backToMacro);
   const showGrid = useMapStore((state) => state.showGrid);
@@ -127,6 +121,19 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     }));
   }, [tiles]);
 
+  const regionLabel = useMemo(
+    () => regions[region.regionId]?.name ?? region.regionId,
+    [region.regionId, regions],
+  );
+
+  const derivedGeometry = useMemo(() => {
+    if (region.hull && region.centroid) {
+      return { hull: region.hull, centroid: region.centroid };
+    }
+    const result = buildRegionHull(region, BASE_HEX_SIZE);
+    return { hull: result.hull, centroid: result.centroid };
+  }, [region]);
+
   const selectedTile = useMemo(() => (selectedTileId ? tileLookup.get(selectedTileId) ?? null : null), [selectedTileId, tileLookup]);
 
   useEffect(() => {
@@ -134,69 +141,21 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   }, [region.regionId]);
 
   const lanesForRegion = useMemo(() => {
-    const node = regions[region.regionId];
-    if (!node) {
+    if (!region.gates?.length) {
       return [] as LaneGateDescriptor[];
     }
 
-    return lanes
-      .map((lane) => {
-        const isSource = lane.from === node.id || lane.to === node.id;
-        if (!isSource) {
-          return null;
-        }
-
-        const targetId = lane.from === node.id ? lane.to : lane.from;
-        const target = regions[targetId];
-        if (!target) {
-          return null;
-        }
-
-        const directionVector = { q: target.RQ - node.RQ, r: target.RR - node.RR };
-        const targetPixel = axialToPixel(directionVector, 1);
-        let bestDirection = AXIAL_DIRECTIONS[0];
-        let bestScore = Number.NEGATIVE_INFINITY;
-        AXIAL_DIRECTIONS.forEach((direction) => {
-          const pixel = axialToPixel(direction, 1);
-          const dot = pixel.x * targetPixel.x + pixel.y * targetPixel.y;
-          const magnitude = Math.hypot(pixel.x, pixel.y) * Math.hypot(targetPixel.x, targetPixel.y);
-          const score = magnitude === 0 ? dot : dot / magnitude;
-          if (score > bestScore) {
-            bestScore = score;
-            bestDirection = direction;
-          }
-        });
-
-        const desired = { q: bestDirection.q * region.radius, r: bestDirection.r * region.radius };
-        let gateTile = tileLookup.get(`${desired.q}_${desired.r}`);
-        if (!gateTile) {
-          let closest: TileData | null = null;
-          let closestDist = Number.POSITIVE_INFINITY;
-          tiles.forEach((tile) => {
-            const d = distance(tile, desired);
-            if (d < closestDist) {
-              closest = tile;
-              closestDist = d;
-            }
-          });
-          gateTile = closest ?? null;
-        }
-
-        if (!gateTile) {
-          return null;
-        }
-
-        const { x, y } = axialToPixel({ q: gateTile.q, r: gateTile.r }, BASE_HEX_SIZE);
-        return {
-          id: `${node.id}->${target.id}`,
-          tile: gateTile,
-          x,
-          y,
-          label: target.name,
-        } satisfies LaneGateDescriptor;
-      })
-      .filter((value): value is LaneGateDescriptor => Boolean(value));
-  }, [lanes, region.radius, region.regionId, regions, tileLookup, tiles]);
+    return region.gates.map((gate, index) => {
+      const target = regions[gate.toRegionId];
+      return {
+        id: `${region.regionId}->${gate.toRegionId}-${index}`,
+        x: gate.at.x,
+        y: gate.at.y,
+        label: target ? target.name : gate.toRegionId,
+        edgeDir: gate.edgeDir,
+      } satisfies LaneGateDescriptor;
+    });
+  }, [region.gates, region.regionId, regions]);
 
   const drawScene = useCallback(() => {
     const canvas = canvasRef.current;
@@ -312,8 +271,58 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
       ctx.restore();
     });
 
+    if (derivedGeometry.hull) {
+      ctx.save();
+      ctx.globalAlpha = 0.06;
+      ctx.fillStyle = '#ffffff';
+      ctx.fill(derivedGeometry.hull);
+      ctx.restore();
+
+      ctx.save();
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.shadowColor = 'rgba(30,41,59,0.45)';
+      ctx.shadowBlur = 8 / (camera.scale * dpr);
+      ctx.strokeStyle = 'rgba(191,219,254,0.85)';
+      ctx.lineWidth = 6 / (camera.scale * dpr);
+      ctx.stroke(derivedGeometry.hull);
+      ctx.restore();
+
+      ctx.save();
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(30,41,59,0.82)';
+      ctx.lineWidth = 2 / (camera.scale * dpr);
+      ctx.stroke(derivedGeometry.hull);
+      ctx.restore();
+
+      ctx.save();
+      ctx.globalAlpha = 0.1;
+      ctx.shadowColor = 'rgba(15,23,42,0.45)';
+      ctx.shadowBlur = 14 / (camera.scale * dpr);
+      ctx.strokeStyle = 'rgba(15,23,42,0.2)';
+      ctx.lineWidth = 3 / (camera.scale * dpr);
+      ctx.stroke(derivedGeometry.hull);
+      ctx.restore();
+    }
+
+    if (!rawMode && derivedGeometry.centroid && regionLabel) {
+      ctx.save();
+      const fontSize = 18 / dpr;
+      ctx.font = `${fontSize}px 'Cinzel', serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 6 / (camera.scale * dpr);
+      ctx.strokeStyle = 'rgba(15,23,42,0.75)';
+      ctx.fillStyle = '#f8fafc';
+      ctx.shadowColor = 'rgba(15,23,42,0.35)';
+      ctx.shadowBlur = 12 / (camera.scale * dpr);
+      ctx.strokeText(regionLabel, derivedGeometry.centroid.x, derivedGeometry.centroid.y);
+      ctx.fillText(regionLabel, derivedGeometry.centroid.x, derivedGeometry.centroid.y);
+      ctx.restore();
+    }
+
     ctx.restore();
-  }, [camera.scale, camera.tx, camera.ty, rawMode, selectedTile, showGrid, tileCenters]);
+  }, [camera.scale, camera.tx, camera.ty, derivedGeometry.centroid, derivedGeometry.hull, rawMode, regionLabel, selectedTile, showGrid, tileCenters]);
 
   useEffect(() => {
     drawScene();
@@ -436,8 +445,6 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     }
   };
 
-  const activeNode = regions[region.regionId];
-
   return (
     <div ref={containerRef} className="relative h-full w-full">
       <canvas
@@ -452,7 +459,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
       />
       <div className="pointer-events-auto absolute left-4 top-4 z-30 flex flex-wrap items-center gap-2">
         <div className="pointer-events-auto rounded-full border border-cyan-400/40 bg-slate-900/80 px-4 py-2 text-xs uppercase tracking-[0.2em] text-cyan-200">
-          {activeNode ? activeNode.name : region.regionId}
+          {regionLabel}
         </div>
         <button
           type="button"
@@ -472,6 +479,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
       {lanesForRegion.map((gate) => {
         const screenX = camera.tx + gate.x * camera.scale;
         const screenY = camera.ty + gate.y * camera.scale;
+        const arrow = GATE_ARROWS[gate.edgeDir] ?? '↠';
         return (
           <div
             key={gate.id}
@@ -479,7 +487,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
             style={{ transform: `translate(${screenX}px, ${screenY}px)` }}
           >
             <div className="pointer-events-auto rounded-full border border-cyan-300/60 bg-cyan-900/80 px-3 py-1 text-[0.65rem] uppercase tracking-wide text-cyan-100 shadow-lg">
-              Gate ▸ {gate.label}
+              Gate {arrow} {gate.label}
             </div>
           </div>
         );
