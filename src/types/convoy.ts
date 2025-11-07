@@ -19,6 +19,11 @@ export interface UnitLocation extends Axial {
 }
 
 /**
+ * Role descriptor highlighting diegetic responsibilities of a unit frame.
+ */
+export type UnitRole = 'attack' | 'transport' | 'scout' | 'colonizer' | 'support';
+
+/**
  * Describes a mobile unit that can be assigned to a convoy.
  */
 export interface Unit {
@@ -29,6 +34,9 @@ export interface Unit {
   actions: ActionType[];
   pressureCapacity: number;
   location: UnitLocation;
+  role: UnitRole;
+  /** Optional tech node identifier that must be researched before construction. */
+  requiresResearch?: string;
 }
 
 /**
