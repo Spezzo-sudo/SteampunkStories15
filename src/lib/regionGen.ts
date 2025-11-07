@@ -35,6 +35,7 @@ export const generateRegion = (RQ: number, RR: number, seed: number): RegionData
       settleable,
       allianceId,
       units,
+      regionId: `${RQ}_${RR}`,
     } satisfies TileData;
   });
 

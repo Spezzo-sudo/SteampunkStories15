@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import { generateRegion } from '@/lib/regionGen';
 import { hash32 } from '@/lib/rng';
 import { AXIAL_DIRECTIONS, axialDisk, axialToPixel, computeHexBoundingBox } from '@/lib/hex';
-import type { RegionData, RegionMeta } from '@/types/map';
+import { buildRegionHull, computeRegionGates, createRegionCellIndex, normalizeRegionTiles } from '@/lib/regionGeometry';
+import type { RegionData, RegionGate, RegionMeta } from '@/types/map';
 
 interface WorldPayload {
   regions: RegionMeta[];
@@ -156,6 +157,61 @@ const buildGridLanes = (regions: Record<string, RegionNode>) => {
   return edges;
 };
 
+const finalizeRegionData = (region: RegionData, lanes: LaneEdge[], nodes: Record<string, RegionNode>): RegionData => {
+  const normalizedTiles = normalizeRegionTiles(region);
+  const normalized: RegionData = { ...region, tiles: normalizedTiles };
+  const geometry = buildRegionHull(normalized, REGION_BASE_HEX_SIZE);
+
+  const node = nodes[normalized.regionId];
+  let gates: RegionGate[] = [];
+  if (node) {
+    const neighborIndex = createRegionCellIndex(normalized);
+    lanes.forEach((lane) => {
+      if (lane.from !== node.id && lane.to !== node.id) {
+        return;
+      }
+      const neighborId = lane.from === node.id ? lane.to : lane.from;
+      const target = nodes[neighborId];
+      if (!target) {
+        return;
+      }
+      const delta = { q: target.RQ - node.RQ, r: target.RR - node.RR };
+      if (delta.q === 0 && delta.r === 0) {
+        return;
+      }
+      let bestIndex = 0;
+      let bestScore = Number.NEGATIVE_INFINITY;
+      const deltaPixel = axialToPixel(delta, 1);
+      AXIAL_DIRECTIONS.forEach((direction, index) => {
+        const dirPixel = axialToPixel(direction, 1);
+        const dot = dirPixel.x * deltaPixel.x + dirPixel.y * deltaPixel.y;
+        const magnitude = Math.hypot(dirPixel.x, dirPixel.y) * Math.hypot(deltaPixel.x, deltaPixel.y) || 1;
+        const score = dot / magnitude;
+        if (score > bestScore) {
+          bestScore = score;
+          bestIndex = index;
+        }
+      });
+      const direction = AXIAL_DIRECTIONS[bestIndex];
+      const boundaryQ = direction.q * normalized.radius;
+      const boundaryR = direction.r * normalized.radius;
+      const outsideQ = boundaryQ + direction.q;
+      const outsideR = boundaryR + direction.r;
+      neighborIndex.set(`${outsideQ},${outsideR}`, neighborId);
+    });
+    gates = computeRegionGates(normalized, neighborIndex, REGION_BASE_HEX_SIZE);
+  }
+
+  return {
+    ...normalized,
+    hull: geometry.hull,
+    loops: geometry.loops,
+    centroid: geometry.centroid,
+    bounds: geometry.bounds,
+    gates,
+  };
+};
+
 /**
  * Zustand store exposing shared galaxy map state.
  */
@@ -221,13 +277,15 @@ export const useMapStore = create<MapStore>((set, get) => ({
 
   async openRegion(RQ, RR, seed) {
     const regionId = `${RQ}_${RR}`;
-    const { regionCache } = get();
+    const { regionCache, lanes, regions } = get();
     const cached = regionCache[regionId];
     if (cached) {
-      set({
+      const prepared = finalizeRegionData(cached, lanes, regions);
+      set((state) => ({
         mode: 'micro',
-        activeRegion: cached,
-      });
+        activeRegion: prepared,
+        regionCache: { ...state.regionCache, [regionId]: prepared },
+      }));
       return;
     }
 
@@ -237,10 +295,11 @@ export const useMapStore = create<MapStore>((set, get) => ({
       const response = await fetch(`/maps/regions/${regionId}.json`);
       if (response.ok) {
         const region = (await response.json()) as RegionData;
+        const prepared = finalizeRegionData(region, lanes, regions);
         set((state) => ({
           mode: 'micro',
-          activeRegion: region,
-          regionCache: { ...state.regionCache, [regionId]: region },
+          activeRegion: prepared,
+          regionCache: { ...state.regionCache, [regionId]: prepared },
         }));
         return;
       }
@@ -248,17 +307,18 @@ export const useMapStore = create<MapStore>((set, get) => ({
       console.warn('Falling back to procedural region generation', error);
     }
 
-    const region = generateRegion(RQ, RR, deterministicSeed);
+    const generated = generateRegion(RQ, RR, deterministicSeed);
+    const prepared = finalizeRegionData(generated, lanes, regions);
     set((state) => ({
       mode: 'micro',
-      activeRegion: region,
-      regionCache: { ...state.regionCache, [regionId]: region },
+      activeRegion: prepared,
+      regionCache: { ...state.regionCache, [regionId]: prepared },
     }));
   },
 
   async prefetchRegion(RQ, RR, seed) {
     const regionId = `${RQ}_${RR}`;
-    const { regionCache } = get();
+    const { regionCache, lanes, regions } = get();
     if (regionCache[regionId]) {
       return;
     }
@@ -275,20 +335,22 @@ export const useMapStore = create<MapStore>((set, get) => ({
         const response = await fetch(`/maps/regions/${regionId}.json`);
         if (response.ok) {
           const region = (await response.json()) as RegionData;
+          const prepared = finalizeRegionData(region, lanes, regions);
           set((state) => ({
-            regionCache: { ...state.regionCache, [regionId]: region },
+            regionCache: { ...state.regionCache, [regionId]: prepared },
           }));
-          return region;
+          return prepared;
         }
       } catch (error) {
         console.warn('Region prefetch failed, falling back to procedural data', error);
       }
 
       const generated = generateRegion(RQ, RR, deterministicSeed);
+      const prepared = finalizeRegionData(generated, lanes, regions);
       set((state) => ({
-        regionCache: { ...state.regionCache, [regionId]: generated },
+        regionCache: { ...state.regionCache, [regionId]: prepared },
       }));
-      return generated;
+      return prepared;
     })();
 
     prefetchInFlight[regionId] = request;
@@ -308,9 +370,32 @@ export const useMapStore = create<MapStore>((set, get) => ({
       return;
     }
 
-    const pad = 48;
+    const pad = 64;
     const effectiveWidth = Math.max(1, vw - pad * 2);
     const effectiveHeight = Math.max(1, vh - pad * 2);
+    const { activeRegion } = get();
+
+    if (activeRegion?.bounds && activeRegion.bounds.width > 0 && activeRegion.bounds.height > 0) {
+      const bounds = activeRegion.bounds;
+      const scaleX = effectiveWidth / Math.max(bounds.width, 1);
+      const scaleY = effectiveHeight / Math.max(bounds.height, 1);
+      const desired = Math.max(0.1, Math.min(scaleX, scaleY));
+      const centerX = bounds.minX + bounds.width / 2;
+      const centerY = bounds.minY + bounds.height / 2;
+
+      set((state) => ({
+        camera: {
+          ...state.camera,
+          scale: desired,
+          tx: vw / 2 - centerX * desired,
+          ty: vh / 2 - centerY * desired,
+          minScale: desired * 0.85,
+          maxScale: desired * 5,
+        },
+      }));
+      return;
+    }
+
     const centers = axialDisk(regionRadius).map((coord) => axialToPixel(coord, REGION_BASE_HEX_SIZE));
     const bounds = computeHexBoundingBox(centers, REGION_BASE_HEX_SIZE);
     const scaleX = effectiveWidth / Math.max(bounds.width, 1);
@@ -325,7 +410,7 @@ export const useMapStore = create<MapStore>((set, get) => ({
         scale: desired,
         tx: vw / 2 - centerX * desired,
         ty: vh / 2 - centerY * desired,
-        minScale: desired * 0.9,
+        minScale: desired * 0.85,
         maxScale: desired * 5,
       },
     }));
