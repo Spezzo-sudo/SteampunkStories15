@@ -38,6 +38,7 @@ interface HexPolygonProps {
  */
 const MacroMapComponent: React.FC<MacroMapProps> = ({ regions }) => {
   const openRegion = useMapStore((state) => state.openRegion);
+  const prefetchRegion = useMapStore((state) => state.prefetchRegion);
 
   const layout = useMemo(() => {
     if (regions.length === 0) {
@@ -132,6 +133,7 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ regions }) => {
         <g
           key={tile.id}
           onClick={() => openRegion(tile.region.RQ, tile.region.RR, tile.region.seed)}
+          onPointerEnter={() => prefetchRegion(tile.region.RQ, tile.region.RR, tile.region.seed)}
           filter="url(#macro-hex-shadow)"
           className="transition-colors hover:[&>polygon]:fill-yellow-500/20"
           style={{ cursor: 'pointer' }}
