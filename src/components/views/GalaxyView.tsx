@@ -8,14 +8,13 @@ import { useMapStore } from '@/store/mapStore';
  */
 export default function GalaxyView(): React.ReactElement {
   const mode = useMapStore((state) => state.mode);
-  const regionsRecord = useMapStore((state) => state.regions);
-  const lanes = useMapStore((state) => state.lanes);
+  const world = useMapStore((state) => state.world);
   const activeRegion = useMapStore((state) => state.activeRegion);
   const loadWorld = useMapStore((state) => state.loadWorld);
   const loadingWorld = useMapStore((state) => state.loadingWorld);
   const worldError = useMapStore((state) => state.worldError);
 
-  const regionNodes = useMemo(() => Object.values(regionsRecord), [regionsRecord]);
+  const regionCount = useMemo(() => world?.regions.length ?? 0, [world]);
 
   useEffect(() => {
     void loadWorld();
@@ -36,7 +35,7 @@ export default function GalaxyView(): React.ReactElement {
       <header className="flex items-center justify-between">
         <h1 className="text-2xl font-cinzel text-yellow-200">Ätherische Weltkarte</h1>
         <p className="text-xs uppercase tracking-wide text-slate-300">
-          {loadingWorld ? 'Lade Regionen…' : `Regionen insgesamt: ${regionNodes.length}`}
+          {loadingWorld ? 'Lade Regionen…' : `Regionen insgesamt: ${regionCount}`}
         </p>
       </header>
       <div className="relative flex-1 overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-900/60 shadow-inner">
@@ -48,7 +47,7 @@ export default function GalaxyView(): React.ReactElement {
             </p>
           </div>
         ) : (
-          <MacroMap nodes={regionNodes} lanes={lanes} />
+          <MacroMap />
         )}
       </div>
     </section>
