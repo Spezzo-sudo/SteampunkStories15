@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { MACRO_HEX_SIZE } from '@/constants/map';
-import { axialDisk, axialToPixel } from '@/lib/hex';
+import { axialDisk, axialToPixel, computeHexBoundingBox, getHexEdgeMidpoints } from '@/lib/hex';
 import LegendOverlay from '@/components/overlays/LegendOverlay';
 import DebugFab from '@/components/overlays/DebugFab';
 import { useMapStore, type LaneEdge, type RegionNode } from '@/store/mapStore';
@@ -30,16 +30,46 @@ interface LanePath {
 }
 
 const edgeKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+const REGION_HEX_RADIUS = MACRO_HEX_SIZE;
 
-const computeLanePath = (from: { x: number; y: number }, to: { x: number; y: number }) => {
-  const midX = (from.x + to.x) / 2;
-  const midY = (from.y + to.y) / 2;
-  const nx = -(to.y - from.y);
-  const ny = to.x - from.x;
+const selectEdgeMidpoint = (origin: { x: number; y: number }, target: { x: number; y: number }) => {
+  const edges = getHexEdgeMidpoints(origin.x, origin.y, REGION_HEX_RADIUS);
+  if (!edges.length) {
+    return { x: origin.x, y: origin.y };
+  }
+
+  const dx = target.x - origin.x;
+  const dy = target.y - origin.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const dirX = dx / length;
+  const dirY = dy / length;
+
+  return edges.reduce<{ point: { x: number; y: number }; score: number }>(
+    (best, edge) => {
+      const ex = edge.x - origin.x;
+      const ey = edge.y - origin.y;
+      const edgeLength = Math.hypot(ex, ey) || 1;
+      const score = (ex / edgeLength) * dirX + (ey / edgeLength) * dirY;
+      if (score > best.score) {
+        return { point: edge, score };
+      }
+      return best;
+    },
+    { point: edges[0], score: Number.NEGATIVE_INFINITY },
+  ).point;
+};
+
+const buildLaneCommand = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+  const start = selectEdgeMidpoint(from, to);
+  const end = selectEdgeMidpoint(to, from);
+  const midX = (start.x + end.x) / 2;
+  const midY = (start.y + end.y) / 2;
+  const nx = -(end.y - start.y);
+  const ny = end.x - start.x;
   const curvature = 0.18;
   const controlX = midX + nx * curvature;
   const controlY = midY + ny * curvature;
-  return `M ${from.x} ${from.y} Q ${controlX} ${controlY} ${to.x} ${to.y}`;
+  return `M ${start.x} ${start.y} Q ${controlX} ${controlY} ${end.x} ${end.y}`;
 };
 
 const LanePathElement: React.FC<LanePath> = ({ d, active, locked }) => {
@@ -87,48 +117,39 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ nodes, lanes }) => {
 
   const layout = useMemo(() => {
     if (nodes.length === 0) {
+      const fallback = REGION_HEX_RADIUS * 6;
       return {
-        viewBox: '-320 -320 640 640',
+        viewBox: `${-fallback / 2} ${-fallback / 2} ${fallback} ${fallback}`,
         placements: [] as NodePlacement[],
         background: [] as BackgroundHex[],
         map: new Map<string, NodePlacement>(),
       };
     }
 
-    const placements: NodePlacement[] = [];
-    let minX = Number.POSITIVE_INFINITY;
-    let maxX = Number.NEGATIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY;
-    let maxY = Number.NEGATIVE_INFINITY;
-    let minQ = Number.POSITIVE_INFINITY;
-    let maxQ = Number.NEGATIVE_INFINITY;
-    let minR = Number.POSITIVE_INFINITY;
-    let maxR = Number.NEGATIVE_INFINITY;
-
-    nodes.forEach((node) => {
-      const { x, y } = axialToPixel({ q: node.RQ, r: node.RR }, MACRO_HEX_SIZE * 1.1);
-      placements.push({ node, x, y });
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-      minQ = Math.min(minQ, node.RQ);
-      maxQ = Math.max(maxQ, node.RQ);
-      minR = Math.min(minR, node.RR);
-      maxR = Math.max(maxR, node.RR);
+    const placements: NodePlacement[] = nodes.map((node) => {
+      const { x, y } = axialToPixel({ q: node.RQ, r: node.RR }, REGION_HEX_RADIUS);
+      return { node, x, y };
     });
 
-    const padding = MACRO_HEX_SIZE * 3;
-    const width = maxX - minX + padding * 2;
-    const height = maxY - minY + padding * 2;
-    const viewBox = `${minX - padding} ${minY - padding} ${width || 640} ${height || 640}`;
-
-    const axialRadius = Math.max(
-      4,
-      Math.max(Math.abs(minQ), Math.abs(maxQ), Math.abs(minR), Math.abs(maxR)) + 4,
+    const bounds = computeHexBoundingBox(
+      placements.map((placement) => ({ x: placement.x, y: placement.y })),
+      REGION_HEX_RADIUS,
     );
+
+    const padding = REGION_HEX_RADIUS * 1.5;
+    const width = Math.max(bounds.width + padding * 2, REGION_HEX_RADIUS * 4);
+    const height = Math.max(bounds.height + padding * 2, REGION_HEX_RADIUS * 4);
+    const viewBox = `${bounds.minX - padding} ${bounds.minY - padding} ${width} ${height}`;
+
+    const axialRadius =
+      nodes.reduce((radius, node) => {
+        const qAbs = Math.abs(node.RQ);
+        const rAbs = Math.abs(node.RR);
+        const sAbs = Math.abs(-node.RQ - node.RR);
+        return Math.max(radius, qAbs, rAbs, sAbs);
+      }, 0) + 3;
     const background: BackgroundHex[] = axialDisk(axialRadius).map((coord) => {
-      const { x, y } = axialToPixel(coord, MACRO_HEX_SIZE * 1.1);
+      const { x, y } = axialToPixel(coord, REGION_HEX_RADIUS);
       return { x, y, parity: (coord.q + coord.r) & 1 };
     });
 
@@ -183,7 +204,7 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ nodes, lanes }) => {
         }
         return {
           id: `${lane.from}-${lane.to}`,
-          d: computeLanePath(start, end),
+          d: buildLaneCommand(start, end),
           active: activeEdges.has(edgeKey(lane.from, lane.to)),
           locked: !research.aetherNav || Boolean(lane.blocked),
         };

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { axialToPixel, pixelToAxial } from '@/lib/hex';
+import { AXIAL_DIRECTIONS, axialToPixel, pixelToAxial } from '@/lib/hex';
 import {
   BIOME_STYLE,
   EDGE_ALPHA_RAW,
@@ -15,15 +15,6 @@ import type { RegionData, TileData } from '@/types/map';
 
 const BASE_HEX_SIZE = 28;
 const SHOW_LABEL_ZOOM = 1.1;
-const AXIAL_DIRECTIONS = [
-  { q: 1, r: 0 },
-  { q: 1, r: -1 },
-  { q: 0, r: -1 },
-  { q: -1, r: 0 },
-  { q: -1, r: 1 },
-  { q: 0, r: 1 },
-];
-
 interface RegionViewProps {
   region: RegionData;
 }
@@ -39,6 +30,21 @@ interface LaneGateDescriptor {
 const fallbackBiome: Biome = 'NE';
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+
+const resizeCanvas = (
+  canvas: HTMLCanvasElement,
+  container: HTMLDivElement,
+): { width: number; height: number } => {
+  const rect = container.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.width = `${rect.width}px`;
+  canvas.style.height = `${rect.height}px`;
+  canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+  canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+  const ctx = canvas.getContext('2d');
+  ctx?.setTransform(1, 0, 0, 1, 0, 0);
+  return { width: rect.width, height: rect.height };
+};
 
 const roundAxial = (value: { q: number; r: number }) => {
   const q = value.q;
@@ -320,23 +326,25 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
       return;
     }
 
-    const resize = () => {
-      const rect = container.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-      canvas.height = Math.max(1, Math.floor(rect.height * dpr));
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.height}px`;
-      setViewport({ width: rect.width, height: rect.height });
-      fitRegionToViewport(rect.width, rect.height, region.radius);
-      drawScene();
+    const handleResize = () => {
+      const { width, height } = resizeCanvas(canvas, container);
+      setViewport({ width, height });
+      fitRegionToViewport(width, height, region.radius);
     };
 
-    resize();
-    const observer = new ResizeObserver(resize);
+    handleResize();
+    const observer = new ResizeObserver(handleResize);
     observer.observe(container);
-    return () => observer.disconnect();
-  }, [drawScene, fitRegionToViewport, region.radius]);
+    const viewportApi = window.visualViewport;
+    viewportApi?.addEventListener('resize', handleResize);
+    viewportApi?.addEventListener('scroll', handleResize);
+
+    return () => {
+      observer.disconnect();
+      viewportApi?.removeEventListener('resize', handleResize);
+      viewportApi?.removeEventListener('scroll', handleResize);
+    };
+  }, [fitRegionToViewport, region.radius]);
 
   const handleWheel: React.WheelEventHandler<HTMLCanvasElement> = (event) => {
     event.preventDefault();

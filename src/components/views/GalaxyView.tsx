@@ -23,7 +23,7 @@ export default function GalaxyView(): React.ReactElement {
 
   if (mode === 'micro' && activeRegion) {
     return (
-      <section className="flex h-[calc(100dvh-1rem)] flex-col p-2 sm:p-4">
+      <section className="map-h flex flex-col p-2 sm:p-4">
         <div className="relative flex-1 overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-950/70 shadow-inner">
           <RegionView region={activeRegion} />
         </div>
@@ -32,7 +32,7 @@ export default function GalaxyView(): React.ReactElement {
   }
 
   return (
-    <section className="flex h-[calc(100dvh-1rem)] flex-col gap-4 p-4">
+    <section className="map-h flex flex-col gap-4 p-4">
       <header className="flex items-center justify-between">
         <h1 className="text-2xl font-cinzel text-yellow-200">Ätherische Weltkarte</h1>
         <p className="text-xs uppercase tracking-wide text-slate-300">
