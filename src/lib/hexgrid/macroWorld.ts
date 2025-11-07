@@ -103,12 +103,32 @@ export const drawMacro = (
     ctx.lineWidth = inner;
     ctx.stroke(hexPath(CONFIG.macroHexRadiusPx));
 
-    if (world.selectedRegionId === region.id) {
+    const isSelected = world.selectedRegionId === region.id;
+    const isHome = world.home?.regionId === region.id;
+
+    if (isSelected) {
       ctx.strokeStyle = 'rgba(34,211,238,0.9)';
       ctx.lineWidth = strokePx(8, cam, dpr);
       ctx.globalAlpha = 0.8;
       ctx.stroke(hexPath(CONFIG.macroHexRadiusPx + 2));
       ctx.globalAlpha = 1;
+    }
+
+    if (isHome) {
+      ctx.lineWidth = strokePx(4, cam, dpr);
+      ctx.strokeStyle = 'rgba(251,191,36,0.95)';
+      ctx.globalAlpha = 0.9;
+      ctx.stroke(hexPath(CONFIG.macroHexRadiusPx - 6));
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = 'rgba(253,224,71,0.25)';
+      ctx.fill(hexPath(CONFIG.macroHexRadiusPx - 10));
+      ctx.globalAlpha = 1;
+
+      ctx.font = `${16 / dpr}px 'Cinzel', serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fde68a';
+      ctx.fillText('★', 0, -CONFIG.macroHexRadiusPx * 0.45);
     }
 
     ctx.font = `${14 / dpr}px 'Cinzel', serif`;

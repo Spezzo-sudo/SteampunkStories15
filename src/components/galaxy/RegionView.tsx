@@ -1,8 +1,17 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { CONFIG } from '@/config/mapConfig';
 import type { Region, Tile } from '@/data/types';
 import { drawRegion, pickTileAt, regionHull } from '@/lib/hexgrid/microRegion';
 import { resizeCanvas, type Camera, fitToBounds } from '@/lib/hexgrid/viewport';
+import { parseCoordinate } from '@/lib/hexgrid/coordinateParser';
+import { OrderSheet, type OrderDraft, type UnitStackSummary } from '@/components/galaxy/OrderSheet';
+import { RegionSummaryTable } from '@/components/galaxy/RegionSummaryTable';
 import { useMapStore } from '@/store/mapStore';
 
 interface RenderEnv {
@@ -16,17 +25,53 @@ interface RenderEnv {
 
 const DEFAULT_CAMERA: Camera = { tx: 0, ty: 0, scale: 1, minScale: 0.6, maxScale: 6 };
 
+const toTileKey = (tile: Tile) => `${tile.q},${tile.r}`;
+
+const buildStacks = (region: Region): UnitStackSummary[] => {
+  const stacks: UnitStackSummary[] = [];
+  let townCount = 0;
+  let outpostCount = 0;
+  region.tiles.forEach((tile) => {
+    if (!tile.hasSettlement) {
+      return;
+    }
+    const isTown = tile.hasSettlement.icon === 'TOWN';
+    if (isTown) {
+      townCount += 1;
+    } else {
+      outpostCount += 1;
+    }
+    const label = isTown ? `Garnison ${townCount}` : `Vorhut ${outpostCount}`;
+    const strength = isTown ? 24 : 12;
+    const count = isTown ? 3 : 1;
+    stacks.push({
+      id: `${region.id}-${tile.q},${tile.r}`,
+      label,
+      faction: tile.allianceId ?? 'Neutral',
+      count,
+      strength,
+      origin: `${region.RQ},${region.RR};${tile.q},${tile.r}`,
+    });
+  });
+  return stacks;
+};
+
 interface RegionViewProps {
   region: Region;
 }
 
 /**
- * Micro map canvas rendering the 19-hex tile cluster for the selected region.
+ * Micro map canvas rendering the 19-hex tile cluster paired with command tooling and summary tables.
  */
 const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   const backToMacro = useMapStore((state) => state.backToMacro);
+  const world = useMapStore((state) => state.world);
   const allianceFilterOn = useMapStore((state) => state.world?.allianceFilterOn ?? false);
   const toggleAllianceFilter = useMapStore((state) => state.toggleAllianceFilter);
+  const selectRegion = useMapStore((state) => state.selectRegion);
+  const home = useMapStore((state) => state.home ?? state.world?.home ?? null);
+  const setHome = useMapStore((state) => state.setHome);
+  const canBuild = useMapStore((state) => state.canBuild);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -34,7 +79,16 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   const envRef = useRef<RenderEnv | null>(null);
   const regionRef = useRef<Region | null>(region);
   const selectedRef = useRef<Tile | null>(null);
+  const pendingFocusRef = useRef<{ regionId: string; q: number; r: number } | null>(null);
+
   const [selectedTile, setSelectedTile] = useState<Tile | null>(null);
+  const [coordValue, setCoordValue] = useState('');
+  const [coordError, setCoordError] = useState<string | null>(null);
+  const [selectedUnitIds, setSelectedUnitIds] = useState<Set<string>>(new Set());
+  const [queuedOrders, setQueuedOrders] = useState<OrderDraft[]>([]);
+
+  const stacks = useMemo(() => buildStacks(region), [region]);
+  const homeTileKey = home?.regionId === region.id ? home.tileKey : undefined;
 
   const render = useCallback(
     (time: number) => {
@@ -44,10 +98,11 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
         drawRegion(env.ctx, cameraRef.current, env.dpr, currentRegion, CONFIG.microHexSizePx, time, {
           selected: selectedRef.current,
           showAlliances: allianceFilterOn,
+          homeTileKey,
         });
       }
     },
-    [allianceFilterOn],
+    [allianceFilterOn, homeTileKey],
   );
 
   const handleResize = useCallback(() => {
@@ -78,6 +133,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     regionRef.current = region;
     selectedRef.current = null;
     setSelectedTile(null);
+    setSelectedUnitIds(new Set());
     const env = envRef.current;
     if (env) {
       const { bounds } = regionHull(region, CONFIG.microHexSizePx);
@@ -105,12 +161,24 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
 
   useEffect(() => {
     render(performance.now());
-  }, [allianceFilterOn, render]);
+  }, [allianceFilterOn, render, homeTileKey]);
 
   useEffect(() => {
     selectedRef.current = selectedTile;
     render(performance.now());
   }, [selectedTile, render]);
+
+  useEffect(() => {
+    const pending = pendingFocusRef.current;
+    if (pending && pending.regionId === region.id) {
+      const tile = region.tiles.find((candidate) => candidate.q === pending.q && candidate.r === pending.r);
+      if (tile) {
+        setSelectedTile(tile);
+        selectedRef.current = tile;
+      }
+      pendingFocusRef.current = null;
+    }
+  }, [region]);
 
   const getTileFromEvent = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
     const env = envRef.current;
@@ -137,44 +205,193 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     [getTileFromEvent],
   );
 
+  const handleToggleUnit = useCallback((id: string) => {
+    setSelectedUnitIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleCommitOrders = useCallback(
+    (mode: 'dispatch' | 'queue') => {
+      const activeStacks = stacks.filter((stack) => selectedUnitIds.has(stack.id));
+      if (!activeStacks.length) {
+        return;
+      }
+      const now = Date.now();
+      const entry: OrderDraft = {
+        id: `${mode}-${now}`,
+        unitLabels: activeStacks.map((stack) => stack.label),
+        mode,
+        createdAt: now,
+      };
+      setQueuedOrders((prev) => [entry, ...prev]);
+      setSelectedUnitIds(new Set());
+    },
+    [selectedUnitIds, stacks],
+  );
+
+  const handleCoordSubmit = useCallback(() => {
+    if (!coordValue.trim()) {
+      return;
+    }
+    const parsed = parseCoordinate(coordValue);
+    if (!parsed) {
+      setCoordError('Ungültiges Format. Beispiel: 1,-1;0,2');
+      return;
+    }
+    setCoordError(null);
+    const targetRegion = world?.regions.find(
+      (entry) => entry.RQ === parsed.region.RQ && entry.RR === parsed.region.RR,
+    );
+    if (!targetRegion) {
+      setCoordError('Region nicht gefunden.');
+      return;
+    }
+    if (parsed.hex) {
+      pendingFocusRef.current = { regionId: targetRegion.id, q: parsed.hex.q, r: parsed.hex.r };
+    } else {
+      pendingFocusRef.current = null;
+    }
+    if (targetRegion.id !== region.id) {
+      selectRegion(targetRegion.id);
+    } else if (parsed.hex) {
+      const tile = region.tiles.find((candidate) => candidate.q === parsed.hex.q && candidate.r === parsed.hex.r);
+      if (tile) {
+        setSelectedTile(tile);
+      } else {
+        setCoordError('Hex nicht gefunden.');
+        return;
+      }
+    }
+    setCoordValue('');
+  }, [coordValue, world, region, selectRegion]);
+
+  const handleCoordKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        handleCoordSubmit();
+      }
+    },
+    [handleCoordSubmit],
+  );
+
+  const handleHomeSelection = useCallback(() => {
+    if (!selectedTile) {
+      return;
+    }
+    setHome(region.id, selectedTile.q, selectedTile.r);
+  }, [region.id, selectedTile, setHome]);
+
+  const isHomeTile = selectedTile ? homeTileKey === toTileKey(selectedTile) : false;
+
   return (
-    <div ref={containerRef} className="relative h-full w-full">
-      <canvas
-        ref={canvasRef}
-        className="h-full w-full"
-        role="img"
-        aria-label={`Region ${region.name}`}
-        onPointerDown={handlePointerDown}
-      />
-      <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-2">
-        <button
-          type="button"
-          className="pointer-events-auto rounded-full border border-slate-600/60 bg-slate-900/80 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.3em] text-slate-100 shadow-lg"
-          onClick={backToMacro}
-        >
-          Zur Übersicht
-        </button>
-        <button
-          type="button"
-          className="pointer-events-auto rounded-full border border-slate-600/60 bg-slate-900/80 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.3em] text-slate-100 shadow-lg"
-          onClick={toggleAllianceFilter}
-        >
-          {allianceFilterOn ? 'Allianzen: EIN' : 'Allianzen: AUS'}
-        </button>
-      </div>
-      {selectedTile && (
-        <div className="pointer-events-none absolute right-4 bottom-4 w-64 rounded-2xl border border-slate-600/50 bg-slate-900/85 p-4 text-xs text-slate-100 shadow-xl backdrop-blur">
-          <p className="mb-1 font-semibold uppercase tracking-[0.3em]">Hex {selectedTile.q},{selectedTile.r}</p>
-          <p className="text-[0.7rem] text-slate-200">Biome: {selectedTile.biome}</p>
-          {selectedTile.allianceId && <p className="text-[0.7rem] text-slate-200">Bande: {selectedTile.allianceId}</p>}
-          {selectedTile.hasSettlement ? (
-            <p className="text-[0.7rem] text-amber-200">Siedlung: {selectedTile.hasSettlement.icon}</p>
-          ) : (
-            <p className="text-[0.7rem] text-slate-400">Unbesiedelt</p>
-          )}
+    <section className="h-[calc(100dvh-56px)] grid grid-rows-[minmax(420px,1fr)_auto_minmax(200px,1fr)] gap-3 p-4">
+      <div ref={containerRef} className="relative rounded-2xl border border-slate-700/60 bg-slate-900/60 shadow-inner">
+        <canvas
+          ref={canvasRef}
+          className="absolute inset-0 h-full w-full"
+          role="img"
+          aria-label={`Region ${region.name}`}
+          onPointerDown={handlePointerDown}
+        />
+        <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-2">
+          <button
+            type="button"
+            className="pointer-events-auto rounded-full border border-slate-600/60 bg-slate-900/80 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.3em] text-slate-100 shadow-lg"
+            onClick={backToMacro}
+          >
+            Zur Übersicht
+          </button>
+          <button
+            type="button"
+            className="pointer-events-auto rounded-full border border-slate-600/60 bg-slate-900/80 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.3em] text-slate-100 shadow-lg"
+            onClick={toggleAllianceFilter}
+          >
+            {allianceFilterOn ? 'Allianzen: EIN' : 'Allianzen: AUS'}
+          </button>
         </div>
-      )}
-    </div>
+        {!canBuild() && (
+          <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-4">
+            <div className="pointer-events-auto rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-center text-xs uppercase tracking-widest text-emerald-100 shadow-lg">
+              Wähle ein Hex als Heimat, um Bauaufträge freizuschalten.
+            </div>
+          </div>
+        )}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0">
+          <div className="pointer-events-auto mx-4 mb-4 flex items-center gap-3 rounded-xl bg-slate-800/90 px-3 py-2 backdrop-blur">
+            <label className="text-sm text-slate-200">Ziel (RQ,RR;q,r)</label>
+            <input
+              value={coordValue}
+              onChange={(event) => {
+                setCoordValue(event.target.value);
+                setCoordError(null);
+              }}
+              onKeyDown={handleCoordKeyDown}
+              placeholder="z. B. 1,-1;0,2"
+              className="flex-1 rounded bg-slate-900/60 px-2 py-1 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-emerald-400/70"
+            />
+            <button
+              type="button"
+              className="rounded bg-emerald-600 px-3 py-1 text-sm font-semibold text-emerald-50 transition hover:bg-emerald-500"
+              onClick={handleCoordSubmit}
+            >
+              Anpeilen
+            </button>
+          </div>
+          {coordError ? (
+            <p className="mx-4 mb-3 text-[0.65rem] uppercase tracking-widest text-amber-300">{coordError}</p>
+          ) : null}
+        </div>
+        {selectedTile && (
+          <div className="pointer-events-auto absolute right-4 top-24 w-64 rounded-2xl border border-slate-600/50 bg-slate-900/85 p-4 text-xs text-slate-100 shadow-xl backdrop-blur">
+            <p className="mb-1 font-semibold uppercase tracking-[0.3em]">Hex {selectedTile.q},{selectedTile.r}</p>
+            <p className="text-[0.7rem] text-slate-200">Biome: {selectedTile.biome}</p>
+            {selectedTile.allianceId && <p className="text-[0.7rem] text-slate-200">Bande: {selectedTile.allianceId}</p>}
+            {selectedTile.hasSettlement ? (
+              <p className="text-[0.7rem] text-amber-200">Siedlung: {selectedTile.hasSettlement.icon}</p>
+            ) : (
+              <p className="text-[0.7rem] text-slate-400">Unbesiedelt</p>
+            )}
+            <p className="mt-2 text-[0.65rem] text-slate-300">
+              {isHomeTile ? 'Als Heimat markiert' : 'Noch nicht als Heimat gesetzt'}
+            </p>
+            <button
+              type="button"
+              className="mt-3 w-full rounded-lg bg-emerald-600 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-emerald-50 transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-700"
+              onClick={handleHomeSelection}
+              disabled={isHomeTile}
+            >
+              Heimat festlegen
+            </button>
+          </div>
+        )}
+      </div>
+
+      <OrderSheet
+        available={stacks}
+        selectedIds={selectedUnitIds}
+        queued={queuedOrders}
+        onToggle={handleToggleUnit}
+        onCommit={handleCommitOrders}
+        disabled={!canBuild()}
+        disabledHint={!canBuild() ? 'Heimat wählen, um Einheiten zu kommandieren.' : undefined}
+      />
+
+      <div className="min-h-[240px] rounded-2xl border border-slate-700/60 bg-slate-900/60 shadow-inner">
+        <RegionSummaryTable
+          tiles={region.tiles}
+          selectedTileKey={selectedTile ? toTileKey(selectedTile) : undefined}
+          onInspect={setSelectedTile}
+        />
+      </div>
+    </section>
   );
 };
 

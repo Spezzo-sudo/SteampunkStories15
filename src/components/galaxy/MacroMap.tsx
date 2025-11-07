@@ -29,6 +29,7 @@ const MacroMapComponent: React.FC = () => {
   const world = useMapStore((state) => state.world);
   const allianceFilterOn = world?.allianceFilterOn ?? false;
   const selectRegion = useMapStore((state) => state.selectRegion);
+  const home = useMapStore((state) => state.home ?? state.world?.home ?? null);
   const toggleAllianceFilter = useMapStore((state) => state.toggleAllianceFilter);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -149,6 +150,13 @@ const MacroMapComponent: React.FC = () => {
           {allianceFilterOn ? 'Allianzen: EIN' : 'Allianzen: AUS'}
         </button>
       </div>
+      {!home && (
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+          <div className="pointer-events-auto max-w-sm rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-6 py-5 text-center text-sm uppercase tracking-[0.35em] text-emerald-100 shadow-xl">
+            Wähle einen Startplaneten, um die Karte freizuschalten.
+          </div>
+        </div>
+      )}
     </div>
   );
 };

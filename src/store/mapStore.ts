@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Region, Settlement, World } from '@/data/types';
+import type { HomeSelection, Region, Settlement, World } from '@/data/types';
 import { makeWorld } from '@/lib/hexgrid/macroWorld';
 import { CONFIG } from '@/config/mapConfig';
 import { ensureRegionCentroid } from '@/lib/hexgrid/microRegion';
@@ -15,6 +15,8 @@ export interface MapStore {
   world: World | null;
   /** Currently active region in micro mode. */
   activeRegion: Region | null;
+  /** Selected home position required before issuing build orders. */
+  home: HomeSelection | null;
   /** Loading indicator for the world bootstrap. */
   loadingWorld: boolean;
   /** Optional load error message. */
@@ -32,6 +34,10 @@ export interface MapStore {
   setAllianceFilter: (value: boolean) => void;
   /** Updates a settlement badge on a specific tile. */
   setSettlement: (regionId: string, tileKey: string, settlement?: Settlement) => void;
+  /** Persists the player's home selection and updates world highlights. */
+  setHome: (regionId: string, q: number, r: number) => void;
+  /** Returns true once a valid home selection exists. */
+  canBuild: () => boolean;
 }
 
 /** Zustand store orchestrating the macro and micro map experience. */
@@ -39,6 +45,7 @@ export const useMapStore = create<MapStore>((set, get) => ({
   mode: 'macro',
   world: null,
   activeRegion: null,
+  home: null,
   loadingWorld: false,
   worldError: null,
 
@@ -47,7 +54,7 @@ export const useMapStore = create<MapStore>((set, get) => ({
     try {
       const world = makeWorld();
       world.regions.forEach((region) => ensureRegionCentroid(region, CONFIG.microHexSizePx));
-      set({ world, loadingWorld: false, worldError: null });
+      set({ world, loadingWorld: false, worldError: null, home: world.home ?? null });
     } catch (error) {
       set({ loadingWorld: false, worldError: error instanceof Error ? error.message : 'Unbekannter Fehler' });
     }
@@ -118,5 +125,21 @@ export const useMapStore = create<MapStore>((set, get) => ({
       ? regions.find((region) => region.id === nextWorld.selectedRegionId) ?? null
       : get().activeRegion;
     set({ world: nextWorld, activeRegion });
+  },
+
+  setHome: (regionId, q, r) => {
+    const world = get().world;
+    if (!world) {
+      return;
+    }
+    const tileKey = `${q},${r}`;
+    const nextHome: HomeSelection = { regionId, tileKey };
+    const nextWorld: World = { ...world, home: nextHome };
+    set({ world: nextWorld, home: nextHome });
+  },
+
+  canBuild: () => {
+    const home = get().home ?? get().world?.home;
+    return Boolean(home?.regionId && home?.tileKey);
   },
 }));

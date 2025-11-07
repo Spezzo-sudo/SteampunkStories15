@@ -94,7 +94,7 @@ export const drawRegion = (
   region: Region,
   size: number,
   _timeMs: number,
-  options: { selected?: Tile | null; showAlliances: boolean },
+  options: { selected?: Tile | null; showAlliances: boolean; homeTileKey?: string | null },
 ) => {
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -150,6 +150,13 @@ export const drawRegion = (
         ctx.fillStyle = pattern;
         ctx.fill(hexPath(size - 1.6));
       }
+      const bevel = ctx.createLinearGradient(0, -size, 0, size);
+      bevel.addColorStop(0, 'rgba(255,255,255,0.16)');
+      bevel.addColorStop(0.55, 'rgba(255,255,255,0)');
+      bevel.addColorStop(1, 'rgba(15,23,42,0.32)');
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = bevel;
+      ctx.fill(hexPath(size - 1.4));
       ctx.globalAlpha = 1;
       ctx.strokeStyle = style.edge;
       ctx.lineWidth = innerEdge;
@@ -179,6 +186,17 @@ export const drawRegion = (
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(tile.hasSettlement.icon === 'TOWN' ? '⌂' : '△', 0, 0);
+        ctx.restore();
+      }
+
+      if (options.homeTileKey && `${tile.q},${tile.r}` === options.homeTileKey) {
+        ctx.save();
+        ctx.translate(0, size * 0.2);
+        ctx.fillStyle = 'rgba(253,224,71,0.9)';
+        ctx.font = `${12 / dpr}px 'Cinzel', serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Heimat', 0, 0);
         ctx.restore();
       }
       ctx.restore();

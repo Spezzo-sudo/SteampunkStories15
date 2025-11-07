@@ -52,6 +52,14 @@ export interface Region {
   centroid?: { x: number; y: number };
 }
 
+/** Persistent home-world selection enabling build actions. */
+export interface HomeSelection {
+  /** Region identifier that hosts the player's home. */
+  regionId: string;
+  /** Tile key inside the region expressed as "q,r". */
+  tileKey: string;
+}
+
 /** Combined world structure feeding both the macro and micro renderers. */
 export interface World {
   /** All available regions laid out on the macro map. */
@@ -60,4 +68,6 @@ export interface World {
   selectedRegionId?: string;
   /** Whether alliance highlighting should be rendered. */
   allianceFilterOn: boolean;
+  /** Optional home selection that unlocks building actions. */
+  home?: HomeSelection;
 }
