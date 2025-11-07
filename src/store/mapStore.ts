@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { generateRegion } from '@/lib/regionGen';
 import { hash32 } from '@/lib/rng';
-import { axialDisk } from '@/lib/hex';
+import { AXIAL_DIRECTIONS, axialDisk, axialToPixel, computeHexBoundingBox } from '@/lib/hex';
 import type { RegionData, RegionMeta } from '@/types/map';
 
 interface WorldPayload {
@@ -126,6 +126,36 @@ const DEFAULT_LANES: LaneEdge[] = [
 
 const prefetchInFlight: PrefetchState = {};
 
+const REGION_BASE_HEX_SIZE = 28;
+
+const buildGridLanes = (regions: Record<string, RegionNode>) => {
+  const nodes = Object.values(regions);
+  const lookup = new Map<string, RegionNode>();
+  nodes.forEach((node) => {
+    lookup.set(`${node.RQ}_${node.RR}`, node);
+  });
+
+  const seen = new Set<string>();
+  const edges: LaneEdge[] = [];
+
+  nodes.forEach((node) => {
+    AXIAL_DIRECTIONS.forEach((direction) => {
+      const neighbor = lookup.get(`${node.RQ + direction.q}_${node.RR + direction.r}`);
+      if (!neighbor) {
+        return;
+      }
+      const key = node.id < neighbor.id ? `${node.id}|${neighbor.id}` : `${neighbor.id}|${node.id}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      edges.push({ from: node.id, to: neighbor.id, distance: 1 });
+    });
+  });
+
+  return edges;
+};
+
 /**
  * Zustand store exposing shared galaxy map state.
  */
@@ -170,11 +200,13 @@ export const useMapStore = create<MapStore>((set, get) => ({
         };
       });
 
+      const resolvedLanes = payload.lanes?.length ? payload.lanes : buildGridLanes(nextRegions);
+
       set(() => ({
         mode: 'macro',
         loadingWorld: false,
         regions: nextRegions,
-        lanes: payload.lanes?.length ? payload.lanes : DEFAULT_LANES,
+        lanes: resolvedLanes.length ? resolvedLanes : DEFAULT_LANES,
         worldError: null,
       }));
     } catch (error) {
@@ -272,23 +304,28 @@ export const useMapStore = create<MapStore>((set, get) => ({
   },
 
   fitRegionToViewport(vw, vh, regionRadius) {
-    const pad = 24;
-    const targetW = vw - pad * 2;
-    const targetH = vh - pad * 2;
-    const hexCols = regionRadius * 2 + 1 + regionRadius;
-    const hexRows = regionRadius * 2 + 1 + regionRadius;
-    const sizeByW = (targetW / (hexCols * 1.5 + 0.5)) * 2;
-    const sizeByH = (targetH / ((hexRows + 0.5) * Math.sqrt(3))) * 2;
-    const baseHexSize = Math.floor(Math.min(sizeByW, sizeByH));
-    const desired = clamp(baseHexSize / 28, 2, 5);
+    if (vw === 0 || vh === 0) {
+      return;
+    }
+
+    const pad = 48;
+    const effectiveWidth = Math.max(1, vw - pad * 2);
+    const effectiveHeight = Math.max(1, vh - pad * 2);
+    const centers = axialDisk(regionRadius).map((coord) => axialToPixel(coord, REGION_BASE_HEX_SIZE));
+    const bounds = computeHexBoundingBox(centers, REGION_BASE_HEX_SIZE);
+    const scaleX = effectiveWidth / Math.max(bounds.width, 1);
+    const scaleY = effectiveHeight / Math.max(bounds.height, 1);
+    const desired = Math.max(0.1, Math.min(scaleX, scaleY));
+    const centerX = bounds.minX + bounds.width / 2;
+    const centerY = bounds.minY + bounds.height / 2;
 
     set((state) => ({
       camera: {
         ...state.camera,
         scale: desired,
-        tx: vw / 2,
-        ty: vh / 2,
-        minScale: desired * 0.6,
+        tx: vw / 2 - centerX * desired,
+        ty: vh / 2 - centerY * desired,
+        minScale: desired * 0.9,
         maxScale: desired * 5,
       },
     }));
