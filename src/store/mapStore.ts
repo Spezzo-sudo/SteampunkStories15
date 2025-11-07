@@ -66,6 +66,9 @@ interface MapCache {
 export interface MapStore {
   mode: MapMode;
   rawMode: boolean;
+  showGrid: boolean;
+  showLanes: boolean;
+  showLegend: boolean;
   camera: CameraState;
   research: ResearchState;
   travel: TravelPrefs;
@@ -74,6 +77,7 @@ export interface MapStore {
   activeRegion: RegionData | null;
   regionCache: MapCache;
   loadingWorld: boolean;
+  worldError: string | null;
 
   loadWorld: () => Promise<void>;
   openRegion: (RQ: number, RR: number, seed?: number) => Promise<void>;
@@ -85,6 +89,9 @@ export interface MapStore {
   panBy: (dx: number, dy: number) => void;
 
   setRawMode: (enabled: boolean) => void;
+  setShowGrid: (enabled: boolean) => void;
+  setShowLanes: (enabled: boolean) => void;
+  setShowLegend: (enabled: boolean) => void;
   setResearch: <K extends keyof ResearchState>(key: K, value: ResearchState[K]) => void;
 
   computeLaneRoute: (fromId: string, toId: string) => {
@@ -125,6 +132,9 @@ const prefetchInFlight: PrefetchState = {};
 export const useMapStore = create<MapStore>((set, get) => ({
   mode: 'macro',
   rawMode: true,
+  showGrid: true,
+  showLanes: true,
+  showLegend: false,
   camera: DEFAULT_CAMERA,
   research: { aetherNav: false },
   travel: DEFAULT_TRAVEL,
@@ -133,6 +143,7 @@ export const useMapStore = create<MapStore>((set, get) => ({
   activeRegion: null,
   regionCache: {},
   loadingWorld: false,
+  worldError: null,
 
   async loadWorld() {
     const current = get();
@@ -140,7 +151,7 @@ export const useMapStore = create<MapStore>((set, get) => ({
       return;
     }
 
-    set({ loadingWorld: true });
+    set({ loadingWorld: true, worldError: null });
 
     try {
       const response = await fetch('/maps/world.json');
@@ -159,15 +170,20 @@ export const useMapStore = create<MapStore>((set, get) => ({
         };
       });
 
-      set((state) => ({
+      set(() => ({
         mode: 'macro',
         loadingWorld: false,
         regions: nextRegions,
-        lanes: payload.lanes?.length ? payload.lanes : state.lanes,
+        lanes: payload.lanes?.length ? payload.lanes : DEFAULT_LANES,
+        worldError: null,
       }));
     } catch (error) {
       console.error('Failed to load macro world data', error);
-      set({ loadingWorld: false, regions: {} });
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unbekannter Fehler beim Laden der Weltkarte.';
+      set({ loadingWorld: false, regions: {}, worldError: message });
     }
   },
 
@@ -304,6 +320,18 @@ export const useMapStore = create<MapStore>((set, get) => ({
 
   setRawMode(enabled) {
     set({ rawMode: Boolean(enabled) });
+  },
+
+  setShowGrid(enabled) {
+    set({ showGrid: Boolean(enabled) });
+  },
+
+  setShowLanes(enabled) {
+    set({ showLanes: Boolean(enabled) });
+  },
+
+  setShowLegend(enabled) {
+    set({ showLegend: Boolean(enabled) });
   },
 
   setResearch(key, value) {

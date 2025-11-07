@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { MACRO_HEX_SIZE } from '@/constants/map';
 import { axialDisk, axialToPixel } from '@/lib/hex';
+import LegendOverlay from '@/components/overlays/LegendOverlay';
+import DebugFab from '@/components/overlays/DebugFab';
 import { useMapStore, type LaneEdge, type RegionNode } from '@/store/mapStore';
 
 interface MacroMapProps {
@@ -24,6 +26,7 @@ interface LanePath {
   id: string;
   d: string;
   active: boolean;
+  locked: boolean;
 }
 
 const edgeKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
@@ -39,27 +42,28 @@ const computeLanePath = (from: { x: number; y: number }, to: { x: number; y: num
   return `M ${from.x} ${from.y} Q ${controlX} ${controlY} ${to.x} ${to.y}`;
 };
 
-const LanePathElement: React.FC<LanePath> = ({ d, active }) => {
+const LanePathElement: React.FC<LanePath> = ({ d, active, locked }) => {
   const [offset, setOffset] = useState(0);
 
   useEffect(() => {
     let frame = 0;
     const animate = () => {
-      setOffset((value) => (value - (active ? 2.4 : 1.4)) % 200);
+      const speed = locked ? 0.6 : active ? 2.4 : 1.4;
+      setOffset((value) => (value - speed) % 200);
       frame = requestAnimationFrame(animate);
     };
     frame = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frame);
-  }, [active]);
+  }, [active, locked]);
 
   return (
     <path
       d={d}
       fill="none"
-      stroke={active ? 'rgba(56,189,248,0.9)' : 'rgba(148,197,255,0.65)'}
-      strokeWidth={active ? 3.5 : 2}
+      stroke={locked ? 'rgba(248,113,113,0.75)' : active ? 'rgba(56,189,248,0.9)' : 'rgba(148,197,255,0.65)'}
+      strokeWidth={locked ? 2.5 : active ? 3.5 : 2}
       strokeLinecap="round"
-      strokeDasharray={active ? '12 10' : '8 6'}
+      strokeDasharray={locked ? '4 8' : active ? '12 10' : '8 6'}
       strokeDashoffset={offset}
       className="transition-all duration-300"
     />
@@ -74,6 +78,8 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ nodes, lanes }) => {
   const prefetchRegion = useMapStore((state) => state.prefetchRegion);
   const computeLaneRoute = useMapStore((state) => state.computeLaneRoute);
   const research = useMapStore((state) => state.research);
+  const showLanes = useMapStore((state) => state.showLanes);
+  const [planningRoute, setPlanningRoute] = useState(false);
   const [selectedStart, setSelectedStart] = useState<string | null>(null);
   const [route, setRoute] = useState<{ nodes: string[]; cost: number; eta: number } | null>(null);
   const [routeTarget, setRouteTarget] = useState<string | null>(null);
@@ -142,6 +148,14 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ nodes, lanes }) => {
     return () => window.clearTimeout(timeout);
   }, [notice]);
 
+  useEffect(() => {
+    if (!planningRoute) {
+      setSelectedStart(null);
+      setRoute(null);
+      setRouteTarget(null);
+    }
+  }, [planningRoute]);
+
   const activeNodes = new Set(route?.nodes ?? []);
   const activeEdges = useMemo(() => {
     if (!route) {
@@ -157,6 +171,9 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ nodes, lanes }) => {
   }, [route]);
 
   const lanePaths: LanePath[] = useMemo(() => {
+    if (!showLanes) {
+      return [];
+    }
     return lanes
       .map((lane) => {
         const start = layout.map.get(lane.from);
@@ -168,12 +185,23 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ nodes, lanes }) => {
           id: `${lane.from}-${lane.to}`,
           d: computeLanePath(start, end),
           active: activeEdges.has(edgeKey(lane.from, lane.to)),
+          locked: !research.aetherNav || Boolean(lane.blocked),
         };
       })
       .filter((value): value is LanePath => Boolean(value));
-  }, [activeEdges, lanes, layout.map]);
+  }, [activeEdges, lanes, layout.map, research.aetherNav, showLanes]);
 
-  const handleRegionClick = (node: RegionNode) => {
+  const handleRegionClick = (node: RegionNode, event: React.MouseEvent<SVGGElement>) => {
+    const routeMode = planningRoute || event.shiftKey;
+
+    if (!routeMode) {
+      setSelectedStart(null);
+      setRoute(null);
+      setRouteTarget(null);
+      void openRegion(node.RQ, node.RR);
+      return;
+    }
+
     if (!selectedStart) {
       setSelectedStart(node.id);
       setRoute(null);
@@ -182,6 +210,7 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ nodes, lanes }) => {
     }
 
     if (selectedStart === node.id) {
+      void openRegion(node.RQ, node.RR);
       setSelectedStart(null);
       setRoute(null);
       setRouteTarget(null);
@@ -237,21 +266,34 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ nodes, lanes }) => {
           const isStart = placement.node.id === selectedStart;
           const isTarget = placement.node.id === routeTarget;
           const isActive = activeNodes.has(placement.node.id);
+          const locked = !research.aetherNav;
           return (
             <g
               key={placement.node.id}
               filter="url(#macro-node-shadow)"
               style={{ cursor: 'pointer' }}
-              onClick={() => handleRegionClick(placement.node)}
+              onClick={(event) => handleRegionClick(placement.node, event)}
               onDoubleClick={() => openRegion(placement.node.RQ, placement.node.RR)}
               onPointerEnter={() => prefetchRegion(placement.node.RQ, placement.node.RR)}
             >
               <polygon
                 points={buildHexPoints(placement.x, placement.y, MACRO_HEX_SIZE)}
                 fill={isStart ? 'rgba(14,165,233,0.75)' : isActive ? 'rgba(34,197,94,0.7)' : 'rgba(30,64,175,0.65)'}
-                stroke={isTarget ? '#facc15' : isStart ? '#22d3ee' : '#1e40af'}
-                strokeWidth={isActive ? 3.5 : 2.5}
+                stroke={isTarget ? '#facc15' : locked ? '#f87171' : isStart ? '#22d3ee' : '#1e40af'}
+                strokeWidth={isActive ? 3.5 : locked ? 3 : 2.5}
               />
+              {locked ? (
+                <text
+                  x={placement.x}
+                  y={placement.y - MACRO_HEX_SIZE * 0.8}
+                  textAnchor="middle"
+                  fill="#f87171"
+                  fontSize={14}
+                  aria-hidden="true"
+                >
+                  ⛔
+                </text>
+              ) : null}
               <text
                 x={placement.x}
                 y={placement.y + 8}
@@ -272,6 +314,28 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ nodes, lanes }) => {
           Start: {selectedStart}
         </div>
       ) : null}
+      <div className="pointer-events-auto absolute left-4 bottom-4 z-20 flex flex-col gap-2 text-xs text-slate-200">
+        <button
+          type="button"
+          onClick={() => setPlanningRoute((value) => !value)}
+          aria-pressed={planningRoute}
+          className={`rounded-full border px-4 py-2 uppercase tracking-[0.25em] transition ${
+            planningRoute
+              ? 'border-cyan-300/70 bg-cyan-900/40 text-cyan-100'
+              : 'border-slate-600/60 bg-slate-900/70 hover:border-cyan-300/40 hover:text-cyan-100'
+          }`}
+        >
+          {planningRoute ? 'Routenplanung aktiv' : 'Route planen'}
+        </button>
+        <p className="max-w-[14rem] text-[0.6rem] text-slate-300/80">
+          Tipp: Halte die Umschalttaste gedrückt und klicke, um einmalig eine Route zu planen.
+        </p>
+      </div>
+      {!research.aetherNav ? (
+        <div className="pointer-events-none absolute right-4 bottom-4 z-20 rounded-full border border-rose-500/60 bg-rose-900/60 px-4 py-2 text-[0.65rem] uppercase tracking-[0.3em] text-rose-100">
+          Aether-Navigation erforderlich
+        </div>
+      ) : null}
       {route ? (
         <div className="pointer-events-none absolute right-4 top-4 z-20 max-w-xs rounded-3xl border border-cyan-300/50 bg-slate-950/80 p-4 text-sm text-cyan-100">
           <p className="text-[0.6rem] uppercase tracking-[0.3em] text-cyan-300">Aether-Route</p>
@@ -288,6 +352,8 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ nodes, lanes }) => {
           </div>
         </div>
       ) : null}
+      <LegendOverlay />
+      <DebugFab mode="macro" />
     </div>
   );
 };

@@ -13,6 +13,7 @@ export default function GalaxyView(): React.ReactElement {
   const activeRegion = useMapStore((state) => state.activeRegion);
   const loadWorld = useMapStore((state) => state.loadWorld);
   const loadingWorld = useMapStore((state) => state.loadingWorld);
+  const worldError = useMapStore((state) => state.worldError);
 
   const regionNodes = useMemo(() => Object.values(regionsRecord), [regionsRecord]);
 
@@ -39,7 +40,16 @@ export default function GalaxyView(): React.ReactElement {
         </p>
       </header>
       <div className="relative flex-1 overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-900/60 shadow-inner">
-        <MacroMap nodes={regionNodes} lanes={lanes} />
+        {worldError ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center text-sm text-amber-200">
+            <p className="font-cinzel text-lg text-amber-300">Weltkarte nicht verfügbar</p>
+            <p className="max-w-sm text-xs text-amber-100/80">
+              {worldError}. Bitte überprüfe deine Verbindung oder versuche es in einigen Minuten erneut.
+            </p>
+          </div>
+        ) : (
+          <MacroMap nodes={regionNodes} lanes={lanes} />
+        )}
       </div>
     </section>
   );

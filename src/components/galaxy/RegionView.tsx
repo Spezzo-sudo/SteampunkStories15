@@ -1,10 +1,20 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { axialToPixel, pixelToAxial } from '@/lib/hex';
-import { BIOME_STYLE, createBiomePattern } from '@/lib/biomeStyle';
+import {
+  BIOME_STYLE,
+  EDGE_ALPHA_RAW,
+  EDGE_ALPHA_STYLED,
+  PATTERN_ALPHA_RAW,
+  PATTERN_ALPHA_STYLED,
+  createBiomePattern,
+} from '@/lib/biomeStyle';
+import LegendOverlay from '@/components/overlays/LegendOverlay';
+import DebugFab from '@/components/overlays/DebugFab';
 import { useMapStore, type Biome } from '@/store/mapStore';
 import type { RegionData, TileData } from '@/types/map';
 
 const BASE_HEX_SIZE = 28;
+const SHOW_LABEL_ZOOM = 1.1;
 const AXIAL_DIRECTIONS = [
   { q: 1, r: 0 },
   { q: 1, r: -1 },
@@ -27,6 +37,8 @@ interface LaneGateDescriptor {
 }
 
 const fallbackBiome: Biome = 'NE';
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
 const roundAxial = (value: { q: number; r: number }) => {
   const q = value.q;
@@ -89,6 +101,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   const lanes = useMapStore((state) => state.lanes);
   const regions = useMapStore((state) => state.regions);
   const backToMacro = useMapStore((state) => state.backToMacro);
+  const showGrid = useMapStore((state) => state.showGrid);
 
   const tiles = useMemo(() => region.tiles.slice().sort((a, b) => a.r - b.r || a.q - b.q), [region.tiles]);
 
@@ -194,13 +207,26 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#020617';
+    ctx.fillStyle = '#0b1220';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const vignette = ctx.createRadialGradient(
+      canvas.width * 0.5,
+      canvas.height * 0.45,
+      0,
+      canvas.width * 0.5,
+      canvas.height * 0.45,
+      Math.max(canvas.width, canvas.height) * 0.65,
+    );
+    vignette.addColorStop(0, 'rgba(125,211,252,0.08)');
+    vignette.addColorStop(1, 'rgba(15,23,42,0)');
+    ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.translate(camera.tx * dpr, camera.ty * dpr);
     ctx.scale(camera.scale * dpr, camera.scale * dpr);
 
-    const patternCache = new Map<Biome, CanvasPattern>();
+    const patternCache = new Map<string, CanvasPattern>();
     const highlightKey = selectedTile ? `${selectedTile.q}_${selectedTile.r}` : null;
+    const basePatternAlpha = rawMode ? PATTERN_ALPHA_RAW : PATTERN_ALPHA_STYLED;
 
     tileCenters.forEach(({ tile, key, x, y }) => {
       const biomeKey = (tile.biome as Biome) in BIOME_STYLE ? (tile.biome as Biome) : fallbackBiome;
@@ -210,28 +236,44 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
 
       buildHexPath(ctx, 0, 0, BASE_HEX_SIZE - 1);
       ctx.fillStyle = style.fill;
-      ctx.globalAlpha = rawMode ? 0.94 : 0.78;
+      ctx.globalAlpha = rawMode ? 0.92 : 0.78;
       ctx.fill();
 
-      if (!patternCache.has(biomeKey)) {
-        patternCache.set(biomeKey, createBiomePattern(ctx, style.pattern, style.edge, style.fill, dpr));
+      const patternKey = `${biomeKey}-${rawMode ? 'raw' : 'styled'}`;
+      if (!patternCache.has(patternKey)) {
+        patternCache.set(
+          patternKey,
+          createBiomePattern(ctx, style.pattern, style.edge, style.fill, dpr, basePatternAlpha),
+        );
       }
-      const pattern = patternCache.get(biomeKey);
+      const pattern = patternCache.get(patternKey);
       if (pattern) {
-        ctx.globalAlpha = 0.38;
+        const zoomMod = Math.min(1, Math.max(0.75, camera.scale));
+        ctx.globalAlpha = basePatternAlpha * zoomMod;
         ctx.fillStyle = pattern;
         buildHexPath(ctx, 0, 0, BASE_HEX_SIZE - 1.5);
         ctx.fill();
       }
 
-      ctx.globalAlpha = 1;
+      if (showGrid) {
+        ctx.save();
+        ctx.globalAlpha = rawMode ? 0.22 : 0.14;
+        ctx.lineWidth = 0.75 / (camera.scale * dpr);
+        ctx.strokeStyle = rawMode ? 'rgba(226,232,240,0.6)' : 'rgba(148,163,184,0.6)';
+        buildHexPath(ctx, 0, 0, BASE_HEX_SIZE - 2.5);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      ctx.globalAlpha = rawMode ? EDGE_ALPHA_RAW : EDGE_ALPHA_STYLED;
       ctx.lineWidth = 1 / (camera.scale * dpr);
       ctx.strokeStyle = style.edge;
       buildHexPath(ctx, 0, 0, BASE_HEX_SIZE - 1.25);
       ctx.stroke();
+      ctx.globalAlpha = 1;
 
       const label = tile.poi?.[0];
-      if (label) {
+      if (!rawMode && label && camera.scale >= SHOW_LABEL_ZOOM) {
         const fontSize = 12 / dpr;
         ctx.font = `${fontSize}px 'Inter', system-ui, sans-serif`;
         ctx.textAlign = 'center';
@@ -246,18 +288,17 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
       if (key === highlightKey) {
         ctx.save();
         buildHexPath(ctx, 0, 0, BASE_HEX_SIZE - 1);
-        ctx.shadowColor = 'rgba(34,211,238,.85)';
-        ctx.shadowBlur = 18;
+        ctx.shadowColor = 'rgba(34,211,238,0.85)';
+        ctx.shadowBlur = 22;
         ctx.lineWidth = 2 / (camera.scale * dpr);
-        ctx.strokeStyle = 'rgba(34,211,238,.9)';
+        ctx.strokeStyle = 'rgba(165,243,252,0.95)';
         ctx.stroke();
         ctx.restore();
 
         ctx.save();
-        buildHexPath(ctx, 0, 0, BASE_HEX_SIZE - 5);
-        ctx.setLineDash([3 / (camera.scale * dpr), 2 / (camera.scale * dpr)]);
-        ctx.lineWidth = 1.25 / (camera.scale * dpr);
-        ctx.strokeStyle = 'rgba(255,255,255,.85)';
+        ctx.lineWidth = 1 / (camera.scale * dpr);
+        ctx.strokeStyle = 'rgba(224,242,254,0.8)';
+        buildHexPath(ctx, 0, 0, BASE_HEX_SIZE - 4.5);
         ctx.stroke();
         ctx.restore();
       }
@@ -266,7 +307,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     });
 
     ctx.restore();
-  }, [camera.scale, camera.tx, camera.ty, rawMode, selectedTile, tileCenters]);
+  }, [camera.scale, camera.tx, camera.ty, rawMode, selectedTile, showGrid, tileCenters]);
 
   useEffect(() => {
     drawScene();
@@ -306,11 +347,35 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     zoomAt({ x, y }, camera.scale * direction);
   };
 
+  const animateZoom = useCallback(
+    (focus: { x: number; y: number }, targetScale: number) => {
+      const start = performance.now();
+      const initial = camera.scale;
+      const clampedTarget = clamp(targetScale, camera.minScale, camera.maxScale);
+      const duration = 200;
+      const ease = (t: number) => 1 - (1 - t) ** 3;
+
+      const step = (timestamp: number) => {
+        const progress = Math.min(1, (timestamp - start) / duration);
+        const eased = ease(progress);
+        const nextScale = initial + (clampedTarget - initial) * eased;
+        zoomAt(focus, nextScale);
+        if (progress < 1) {
+          requestAnimationFrame(step);
+        }
+      };
+
+      requestAnimationFrame(step);
+    },
+    [camera.maxScale, camera.minScale, camera.scale, zoomAt],
+  );
+
   const handleDoubleClick: React.MouseEventHandler<HTMLCanvasElement> = (event) => {
+    event.preventDefault();
     const rect = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - rect.left;
     const y = event.clientY - rect.top;
-    zoomAt({ x, y }, camera.scale * 1.6);
+    animateZoom({ x, y }, camera.scale * 1.2);
   };
 
   const handlePointerDown: React.PointerEventHandler<HTMLCanvasElement> = (event) => {
@@ -377,7 +442,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
         onDoubleClick={handleDoubleClick}
         style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
       />
-      <div className="pointer-events-none absolute left-4 top-4 z-20 flex flex-wrap items-center gap-2">
+      <div className="pointer-events-auto absolute left-4 top-4 z-30 flex flex-wrap items-center gap-2">
         <div className="pointer-events-auto rounded-full border border-cyan-400/40 bg-slate-900/80 px-4 py-2 text-xs uppercase tracking-[0.2em] text-cyan-200">
           {activeNode ? activeNode.name : region.regionId}
         </div>
@@ -393,7 +458,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
           onClick={() => setRawMode(!rawMode)}
           className="pointer-events-auto rounded-full border border-slate-700/60 bg-black/50 px-3 py-1 text-[0.65rem] uppercase tracking-[0.3em] text-slate-200 transition hover:border-amber-400/70 hover:bg-amber-500/10"
         >
-          RAW: {rawMode ? 'An' : 'Aus'}
+          RAW: {rawMode ? 'AN' : 'AUS'}
         </button>
       </div>
       {lanesForRegion.map((gate) => {
@@ -462,7 +527,9 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
           )}
         </div>
       </aside>
-      <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+      <LegendOverlay />
+      <DebugFab mode="micro" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center pb-[env(safe-area-inset-bottom,0px)]">
         <div className="rounded-full border border-slate-700/50 bg-slate-900/70 px-4 py-2 text-[0.65rem] uppercase tracking-[0.3em] text-slate-200">
           Viewport {Math.round(viewport.width)} × {Math.round(viewport.height)} • Zoom {camera.scale.toFixed(2)}x
         </div>
