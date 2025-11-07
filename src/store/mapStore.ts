@@ -74,6 +74,7 @@ export interface MapStore {
   activeRegion: RegionData | null;
   regionCache: MapCache;
   loadingWorld: boolean;
+  worldError: string | null;
 
   loadWorld: () => Promise<void>;
   openRegion: (RQ: number, RR: number, seed?: number) => Promise<void>;
@@ -133,6 +134,7 @@ export const useMapStore = create<MapStore>((set, get) => ({
   activeRegion: null,
   regionCache: {},
   loadingWorld: false,
+  worldError: null,
 
   async loadWorld() {
     const current = get();
@@ -140,7 +142,7 @@ export const useMapStore = create<MapStore>((set, get) => ({
       return;
     }
 
-    set({ loadingWorld: true });
+    set({ loadingWorld: true, worldError: null });
 
     try {
       const response = await fetch('/maps/world.json');
@@ -159,15 +161,20 @@ export const useMapStore = create<MapStore>((set, get) => ({
         };
       });
 
-      set((state) => ({
+      set(() => ({
         mode: 'macro',
         loadingWorld: false,
         regions: nextRegions,
-        lanes: payload.lanes?.length ? payload.lanes : state.lanes,
+        lanes: payload.lanes?.length ? payload.lanes : DEFAULT_LANES,
+        worldError: null,
       }));
     } catch (error) {
       console.error('Failed to load macro world data', error);
-      set({ loadingWorld: false, regions: {} });
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unbekannter Fehler beim Laden der Weltkarte.';
+      set({ loadingWorld: false, regions: {}, worldError: message });
     }
   },
 
