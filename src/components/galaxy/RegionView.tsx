@@ -165,6 +165,12 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     setHomeTile(defaultHome);
   }, [region]);
 
+  const tileLookup = useMemo(() => {
+    const map = new Map<string, TileData>();
+    tiles.forEach((tile) => map.set(`${tile.q}_${tile.r}`, tile));
+    return map;
+  }, [tiles]);
+
   const tilePixelEntries = useMemo<PositionedAxial[]>(
     () =>
       tiles.map((tile) => {
@@ -442,12 +448,6 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   );
 
   const filteredTiles = useMemo(() => tiles.filter((tile) => matchesAllianceFilter(tile)), [matchesAllianceFilter, tiles]);
-
-  const tileLookup = useMemo(() => {
-    const map = new Map<string, TileData>();
-    tiles.forEach((tile) => map.set(`${tile.q}_${tile.r}`, tile));
-    return map;
-  }, [tiles]);
 
   const filterLabel = useMemo(() => {
     if (activeAllianceFilter === 'all') {
