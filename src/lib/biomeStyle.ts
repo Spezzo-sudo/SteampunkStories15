@@ -2,6 +2,18 @@ import type { Biome } from '@/store/mapStore';
 
 export type BiomePattern = 'dots' | 'diag' | 'raute' | 'noise';
 
+/** Alpha applied to biome patterns while in RAW mode. */
+export const PATTERN_ALPHA_RAW = 0.26;
+
+/** Alpha applied to biome patterns while in the styled presentation mode. */
+export const PATTERN_ALPHA_STYLED = 0.38;
+
+/** Edge opacity used when displaying RAW biome borders. */
+export const EDGE_ALPHA_RAW = 0.65;
+
+/** Edge opacity used for styled biome borders. */
+export const EDGE_ALPHA_STYLED = 0.95;
+
 export interface BiomeVisualStyle {
   fill: string;
   edge: string;
@@ -29,6 +41,7 @@ export const createBiomePattern = (
   color: string,
   bg: string,
   dpr: number = window.devicePixelRatio || 1,
+  alpha: number = 0.3,
 ): CanvasPattern => {
   const size = 32 * dpr;
   const source = typeof OffscreenCanvas !== 'undefined'
@@ -50,7 +63,7 @@ export const createBiomePattern = (
   patternCtx.fillRect(0, 0, size, size);
   patternCtx.strokeStyle = color;
   patternCtx.fillStyle = color;
-  patternCtx.globalAlpha = 0.22;
+  patternCtx.globalAlpha = alpha;
 
   if (type === 'diag') {
     patternCtx.lineWidth = 2 * dpr;

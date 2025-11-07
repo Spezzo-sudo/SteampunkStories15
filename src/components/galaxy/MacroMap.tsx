@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { MACRO_HEX_SIZE } from '@/constants/map';
 import { axialDisk, axialToPixel } from '@/lib/hex';
+import LegendOverlay from '@/components/overlays/LegendOverlay';
+import DebugFab from '@/components/overlays/DebugFab';
 import { useMapStore, type LaneEdge, type RegionNode } from '@/store/mapStore';
 
 interface MacroMapProps {
@@ -76,6 +78,7 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ nodes, lanes }) => {
   const prefetchRegion = useMapStore((state) => state.prefetchRegion);
   const computeLaneRoute = useMapStore((state) => state.computeLaneRoute);
   const research = useMapStore((state) => state.research);
+  const showLanes = useMapStore((state) => state.showLanes);
   const [planningRoute, setPlanningRoute] = useState(false);
   const [selectedStart, setSelectedStart] = useState<string | null>(null);
   const [route, setRoute] = useState<{ nodes: string[]; cost: number; eta: number } | null>(null);
@@ -168,6 +171,9 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ nodes, lanes }) => {
   }, [route]);
 
   const lanePaths: LanePath[] = useMemo(() => {
+    if (!showLanes) {
+      return [];
+    }
     return lanes
       .map((lane) => {
         const start = layout.map.get(lane.from);
@@ -183,7 +189,7 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ nodes, lanes }) => {
         };
       })
       .filter((value): value is LanePath => Boolean(value));
-  }, [activeEdges, lanes, layout.map, research.aetherNav]);
+  }, [activeEdges, lanes, layout.map, research.aetherNav, showLanes]);
 
   const handleRegionClick = (node: RegionNode, event: React.MouseEvent<SVGGElement>) => {
     const routeMode = planningRoute || event.shiftKey;
@@ -346,6 +352,8 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ nodes, lanes }) => {
           </div>
         </div>
       ) : null}
+      <LegendOverlay />
+      <DebugFab mode="macro" />
     </div>
   );
 };

@@ -66,6 +66,9 @@ interface MapCache {
 export interface MapStore {
   mode: MapMode;
   rawMode: boolean;
+  showGrid: boolean;
+  showLanes: boolean;
+  showLegend: boolean;
   camera: CameraState;
   research: ResearchState;
   travel: TravelPrefs;
@@ -86,6 +89,9 @@ export interface MapStore {
   panBy: (dx: number, dy: number) => void;
 
   setRawMode: (enabled: boolean) => void;
+  setShowGrid: (enabled: boolean) => void;
+  setShowLanes: (enabled: boolean) => void;
+  setShowLegend: (enabled: boolean) => void;
   setResearch: <K extends keyof ResearchState>(key: K, value: ResearchState[K]) => void;
 
   computeLaneRoute: (fromId: string, toId: string) => {
@@ -126,6 +132,9 @@ const prefetchInFlight: PrefetchState = {};
 export const useMapStore = create<MapStore>((set, get) => ({
   mode: 'macro',
   rawMode: true,
+  showGrid: true,
+  showLanes: true,
+  showLegend: false,
   camera: DEFAULT_CAMERA,
   research: { aetherNav: false },
   travel: DEFAULT_TRAVEL,
@@ -311,6 +320,18 @@ export const useMapStore = create<MapStore>((set, get) => ({
 
   setRawMode(enabled) {
     set({ rawMode: Boolean(enabled) });
+  },
+
+  setShowGrid(enabled) {
+    set({ showGrid: Boolean(enabled) });
+  },
+
+  setShowLanes(enabled) {
+    set({ showLanes: Boolean(enabled) });
+  },
+
+  setShowLegend(enabled) {
+    set({ showLegend: Boolean(enabled) });
   },
 
   setResearch(key, value) {
