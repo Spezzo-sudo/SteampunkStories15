@@ -1,7 +1,10 @@
 /**
  * Axial coordinate representation for a pointy-top hex grid.
  */
-export type Axial = { q: number; r: number };
+export interface Axial {
+  q: number;
+  r: number;
+}
 
 /**
  * Stable identifier for a macro-region expressed via axial coordinates.
@@ -35,6 +38,7 @@ export interface TileData {
   settleable: boolean;
   allianceId?: string;
   poi?: string[];
+  units?: string[];
 }
 
 /**

@@ -70,6 +70,10 @@ const MAX_ZOOM = 3.0;
 const LOD_MINOR_GRID = 1.5;
 const DEFAULT_MAP_HEIGHT = 460;
 const BUCKET_SIZE = 256;
+const ZOOM_IN_FACTOR = 1.1;
+const ZOOM_OUT_FACTOR = 0.9;
+
+const clampZoom = (value: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value));
 
 const aggregateOwners = (
   system: GalaxySystem,
@@ -123,22 +127,26 @@ const averageHexColors = (colors: string[]): string => {
   if (colors.length === 0) {
     return '#facc15';
   }
-  const { r, g, b } = colors
+  const valid = colors
     .map((color) => hexToRgb(color))
-    .reduce(
-      (acc, current) => ({
-        r: acc.r + srgbToLinear(current.r),
-        g: acc.g + srgbToLinear(current.g),
-        b: acc.b + srgbToLinear(current.b),
-      }),
-      { r: 0, g: 0, b: 0 },
-    );
-  const count = colors.length;
-  return rgbToHex({
-    r: Math.round(linearToSrgb(r / count)),
-    g: Math.round(linearToSrgb(g / count)),
-    b: Math.round(linearToSrgb(b / count)),
-  });
+    .filter((entry): entry is NonNullable<ReturnType<typeof hexToRgb>> => entry != null);
+  if (valid.length === 0) {
+    return '#facc15';
+  }
+  const { red, green, blue } = valid.reduce(
+    (acc, current) => ({
+      red: acc.red + srgbToLinear(current.red),
+      green: acc.green + srgbToLinear(current.green),
+      blue: acc.blue + srgbToLinear(current.blue),
+    }),
+    { red: 0, green: 0, blue: 0 },
+  );
+  const count = valid.length;
+  return rgbToHex(
+    Math.round(linearToSrgb(red / count)),
+    Math.round(linearToSrgb(green / count)),
+    Math.round(linearToSrgb(blue / count)),
+  );
 };
 
 const resolveBiomeVisuals = (
@@ -330,7 +338,6 @@ const HexMap: React.FC<HexMapProps> = ({
         }
       })
       .catch((error) => {
-        // eslint-disable-next-line no-console
         console.error('Failed to load terrain map', error);
       });
     return () => {
@@ -441,7 +448,13 @@ const HexMap: React.FC<HexMapProps> = ({
     const cursorY = event.clientY - rect.top;
     const worldX = cursorX / currentZoom - panZoomState.x;
     const worldY = cursorY / currentZoom - panZoomState.y;
-    const delta = event.deltaY < 0 ? 0.18 : -0.18;
+    const baseFactor = event.deltaY < 0 ? ZOOM_IN_FACTOR : ZOOM_OUT_FACTOR;
+    const scaledFactor = Math.pow(baseFactor, Math.min(1.8, Math.abs(event.deltaY) / 120));
+    const targetZoom = clampZoom(currentZoom * scaledFactor);
+    const delta = targetZoom - currentZoom;
+    if (Math.abs(delta) < 0.0001) {
+      return;
+    }
     queueZoom(delta, { cursorX, cursorY, worldX, worldY });
   };
 

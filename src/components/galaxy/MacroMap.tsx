@@ -1,21 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { MACRO_HEX_SIZE } from '@/constants/map';
 import { axialDisk, axialToPixel } from '@/lib/hex';
-import { useMapStore } from '@/store/mapStore';
-import type { RegionMeta } from '@/types/map';
+import { useMapStore, type LaneEdge, type RegionNode } from '@/store/mapStore';
 
 interface MacroMapProps {
-  regions: RegionMeta[];
-}
-
-interface RegionLayout {
-  id: string;
-  name: string | null;
-  x: number;
-  y: number;
-  color: string;
-  stroke: string;
-  region: RegionMeta;
+  nodes: RegionNode[];
+  lanes: LaneEdge[];
 }
 
 interface BackgroundHex {
@@ -24,31 +14,82 @@ interface BackgroundHex {
   parity: number;
 }
 
-interface HexPolygonProps {
-  cx: number;
-  cy: number;
-  size: number;
-  stroke?: string;
-  strokeWidth?: number;
-  fill?: string;
+interface NodePlacement {
+  node: RegionNode;
+  x: number;
+  y: number;
 }
 
+interface LanePath {
+  id: string;
+  d: string;
+  active: boolean;
+}
+
+const edgeKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+const computeLanePath = (from: { x: number; y: number }, to: { x: number; y: number }) => {
+  const midX = (from.x + to.x) / 2;
+  const midY = (from.y + to.y) / 2;
+  const nx = -(to.y - from.y);
+  const ny = to.x - from.x;
+  const curvature = 0.18;
+  const controlX = midX + nx * curvature;
+  const controlY = midY + ny * curvature;
+  return `M ${from.x} ${from.y} Q ${controlX} ${controlY} ${to.x} ${to.y}`;
+};
+
+const LanePathElement: React.FC<LanePath> = ({ d, active }) => {
+  const [offset, setOffset] = useState(0);
+
+  useEffect(() => {
+    let frame = 0;
+    const animate = () => {
+      setOffset((value) => (value - (active ? 2.4 : 1.4)) % 200);
+      frame = requestAnimationFrame(animate);
+    };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
+  }, [active]);
+
+  return (
+    <path
+      d={d}
+      fill="none"
+      stroke={active ? 'rgba(56,189,248,0.9)' : 'rgba(148,197,255,0.65)'}
+      strokeWidth={active ? 3.5 : 2}
+      strokeLinecap="round"
+      strokeDasharray={active ? '12 10' : '8 6'}
+      strokeDashoffset={offset}
+      className="transition-all duration-300"
+    />
+  );
+};
+
 /**
- * Renders the macro-level world map with one clickable hex per region.
+ * Macro map rendering aether lanes between regions with animated arcs and route previews.
  */
-const MacroMapComponent: React.FC<MacroMapProps> = ({ regions }) => {
+const MacroMapComponent: React.FC<MacroMapProps> = ({ nodes, lanes }) => {
   const openRegion = useMapStore((state) => state.openRegion);
+  const prefetchRegion = useMapStore((state) => state.prefetchRegion);
+  const computeLaneRoute = useMapStore((state) => state.computeLaneRoute);
+  const research = useMapStore((state) => state.research);
+  const [selectedStart, setSelectedStart] = useState<string | null>(null);
+  const [route, setRoute] = useState<{ nodes: string[]; cost: number; eta: number } | null>(null);
+  const [routeTarget, setRouteTarget] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const layout = useMemo(() => {
-    if (regions.length === 0) {
+    if (nodes.length === 0) {
       return {
         viewBox: '-320 -320 640 640',
-        tiles: [] as RegionLayout[],
+        placements: [] as NodePlacement[],
         background: [] as BackgroundHex[],
+        map: new Map<string, NodePlacement>(),
       };
     }
 
-    const placements: RegionLayout[] = [];
+    const placements: NodePlacement[] = [];
     let minX = Number.POSITIVE_INFINITY;
     let maxX = Number.NEGATIVE_INFINITY;
     let minY = Number.POSITIVE_INFINITY;
@@ -58,134 +99,210 @@ const MacroMapComponent: React.FC<MacroMapProps> = ({ regions }) => {
     let minR = Number.POSITIVE_INFINITY;
     let maxR = Number.NEGATIVE_INFINITY;
 
-    regions.forEach((region, index) => {
-      const { x, y } = axialToPixel({ q: region.RQ, r: region.RR }, MACRO_HEX_SIZE);
+    nodes.forEach((node) => {
+      const { x, y } = axialToPixel({ q: node.RQ, r: node.RR }, MACRO_HEX_SIZE * 1.1);
+      placements.push({ node, x, y });
       minX = Math.min(minX, x);
       maxX = Math.max(maxX, x);
       minY = Math.min(minY, y);
       maxY = Math.max(maxY, y);
-      minQ = Math.min(minQ, region.RQ);
-      maxQ = Math.max(maxQ, region.RQ);
-      minR = Math.min(minR, region.RR);
-      maxR = Math.max(maxR, region.RR);
-      placements.push({
-        id: region.id,
-        name: region.name ?? null,
-        x,
-        y,
-        color: pickRegionColor(index),
-        stroke: pickRegionStroke(index),
-        region,
-      });
+      minQ = Math.min(minQ, node.RQ);
+      maxQ = Math.max(maxQ, node.RQ);
+      minR = Math.min(minR, node.RR);
+      maxR = Math.max(maxR, node.RR);
     });
 
-    const padding = MACRO_HEX_SIZE * 2.75;
+    const padding = MACRO_HEX_SIZE * 3;
     const width = maxX - minX + padding * 2;
     const height = maxY - minY + padding * 2;
     const viewBox = `${minX - padding} ${minY - padding} ${width || 640} ${height || 640}`;
 
     const axialRadius = Math.max(
-      3,
-      Math.max(Math.abs(minQ), Math.abs(maxQ), Math.abs(minR), Math.abs(maxR)) + 3,
+      4,
+      Math.max(Math.abs(minQ), Math.abs(maxQ), Math.abs(minR), Math.abs(maxR)) + 4,
     );
     const background: BackgroundHex[] = axialDisk(axialRadius).map((coord) => {
-      const { x, y } = axialToPixel(coord, MACRO_HEX_SIZE);
-      return {
-        x,
-        y,
-        parity: (coord.q + coord.r) & 1,
-      };
+      const { x, y } = axialToPixel(coord, MACRO_HEX_SIZE * 1.1);
+      return { x, y, parity: (coord.q + coord.r) & 1 };
     });
 
-    return {
-      viewBox,
-      tiles: placements,
-      background,
-    };
-  }, [regions]);
+    const map = new Map<string, NodePlacement>();
+    placements.forEach((placement) => {
+      map.set(placement.node.id, placement);
+    });
+
+    return { viewBox, placements, background, map };
+  }, [nodes]);
+
+  useEffect(() => {
+    if (!notice) {
+      return;
+    }
+    const timeout = window.setTimeout(() => setNotice(null), 3200);
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
+
+  const activeNodes = new Set(route?.nodes ?? []);
+  const activeEdges = useMemo(() => {
+    if (!route) {
+      return new Set<string>();
+    }
+    const edges = new Set<string>();
+    for (let index = 0; index < route.nodes.length - 1; index += 1) {
+      const a = route.nodes[index];
+      const b = route.nodes[index + 1];
+      edges.add(edgeKey(a, b));
+    }
+    return edges;
+  }, [route]);
+
+  const lanePaths: LanePath[] = useMemo(() => {
+    return lanes
+      .map((lane) => {
+        const start = layout.map.get(lane.from);
+        const end = layout.map.get(lane.to);
+        if (!start || !end) {
+          return null;
+        }
+        return {
+          id: `${lane.from}-${lane.to}`,
+          d: computeLanePath(start, end),
+          active: activeEdges.has(edgeKey(lane.from, lane.to)),
+        };
+      })
+      .filter((value): value is LanePath => Boolean(value));
+  }, [activeEdges, lanes, layout.map]);
+
+  const handleRegionClick = (node: RegionNode) => {
+    if (!selectedStart) {
+      setSelectedStart(node.id);
+      setRoute(null);
+      setRouteTarget(null);
+      return;
+    }
+
+    if (selectedStart === node.id) {
+      setSelectedStart(null);
+      setRoute(null);
+      setRouteTarget(null);
+      return;
+    }
+
+    if (!research.aetherNav) {
+      setNotice('Erforsche Aether-Navigation, um Lanes zu bereisen.');
+      setRoute(null);
+      setRouteTarget(null);
+      return;
+    }
+
+    const result = computeLaneRoute(selectedStart, node.id);
+    if (!result) {
+      setNotice('Keine Lane-Verbindung gefunden.');
+      setRoute(null);
+      setRouteTarget(null);
+      return;
+    }
+
+    setRoute(result);
+    setRouteTarget(node.id);
+  };
 
   return (
-    <svg role="presentation" className="h-full w-full" viewBox={layout.viewBox} preserveAspectRatio="xMidYMid meet">
-      <defs>
-        <radialGradient id="macro-map-glow" cx="50%" cy="45%" r="65%">
-          <stop offset="0%" stopColor="rgba(190,242,100,0.25)" />
-          <stop offset="100%" stopColor="rgba(15,23,42,0)" />
-        </radialGradient>
-        <filter id="macro-hex-shadow" x="-40%" y="-40%" width="180%" height="180%">
-          <feDropShadow dx="0" dy="6" stdDeviation="6" floodColor="rgba(15,23,42,0.75)" floodOpacity="0.65" />
-        </filter>
-      </defs>
-      <rect x="-4000" y="-4000" width="8000" height="8000" fill="#0f172a" />
-      <circle cx={0} cy={0} r={MACRO_HEX_SIZE * 14} fill="url(#macro-map-glow)" />
-      {layout.background.map((tile) => (
-        <HexPolygon
-          key={`bg-${tile.x}-${tile.y}`}
-          cx={tile.x}
-          cy={tile.y}
-          size={MACRO_HEX_SIZE}
-          fill={tile.parity === 0 ? 'rgba(30,41,59,0.45)' : 'rgba(15,23,42,0.35)'}
-          stroke="rgba(148,163,184,0.12)"
-          strokeWidth={1}
-        />
-      ))}
-      {layout.tiles.map((tile) => (
-        <g
-          key={tile.id}
-          onClick={() => openRegion(tile.region.RQ, tile.region.RR, tile.region.seed)}
-          filter="url(#macro-hex-shadow)"
-          className="transition-colors hover:[&>polygon]:fill-yellow-500/20"
-          style={{ cursor: 'pointer' }}
-        >
-          <HexPolygon cx={tile.x} cy={tile.y} size={MACRO_HEX_SIZE} stroke={tile.stroke} fill={tile.color} strokeWidth={2.5} />
-          {tile.name ? (
-            <text
-              x={tile.x}
-              y={tile.y + 6}
-              textAnchor="middle"
-              fill="#f8fafc"
-              fontSize={13}
-              fontFamily="Cinzel"
-              style={{ textShadow: '0 2px 6px rgba(15,23,42,0.85)' }}
+    <div className="relative h-full w-full">
+      <svg role="presentation" className="h-full w-full" viewBox={layout.viewBox} preserveAspectRatio="xMidYMid meet">
+        <defs>
+          <radialGradient id="macro-aether-glow" cx="50%" cy="45%" r="65%">
+            <stop offset="0%" stopColor="rgba(125,211,252,0.3)" />
+            <stop offset="100%" stopColor="rgba(15,23,42,0)" />
+          </radialGradient>
+          <filter id="macro-node-shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="8" stdDeviation="8" floodColor="rgba(15,23,42,0.8)" floodOpacity="0.75" />
+          </filter>
+        </defs>
+        <rect x="-4000" y="-4000" width="8000" height="8000" fill="#0f172a" />
+        <circle cx={0} cy={0} r={MACRO_HEX_SIZE * 15} fill="url(#macro-aether-glow)" />
+        {layout.background.map((tile) => (
+          <polygon
+            key={`bg-${tile.x}-${tile.y}`}
+            points={buildHexPoints(tile.x, tile.y, MACRO_HEX_SIZE)}
+            fill={tile.parity === 0 ? 'rgba(30,41,59,0.45)' : 'rgba(15,23,42,0.35)'}
+            stroke="rgba(148,163,184,0.12)"
+            strokeWidth={1}
+          />
+        ))}
+        {lanePaths.map((lane) => (
+          <LanePathElement key={lane.id} {...lane} />
+        ))}
+        {layout.placements.map((placement) => {
+          const isStart = placement.node.id === selectedStart;
+          const isTarget = placement.node.id === routeTarget;
+          const isActive = activeNodes.has(placement.node.id);
+          return (
+            <g
+              key={placement.node.id}
+              filter="url(#macro-node-shadow)"
+              style={{ cursor: 'pointer' }}
+              onClick={() => handleRegionClick(placement.node)}
+              onDoubleClick={() => openRegion(placement.node.RQ, placement.node.RR)}
+              onPointerEnter={() => prefetchRegion(placement.node.RQ, placement.node.RR)}
             >
-              {tile.name}
-            </text>
-          ) : null}
-        </g>
-      ))}
-    </svg>
+              <polygon
+                points={buildHexPoints(placement.x, placement.y, MACRO_HEX_SIZE)}
+                fill={isStart ? 'rgba(14,165,233,0.75)' : isActive ? 'rgba(34,197,94,0.7)' : 'rgba(30,64,175,0.65)'}
+                stroke={isTarget ? '#facc15' : isStart ? '#22d3ee' : '#1e40af'}
+                strokeWidth={isActive ? 3.5 : 2.5}
+              />
+              <text
+                x={placement.x}
+                y={placement.y + 8}
+                textAnchor="middle"
+                fill="#f8fafc"
+                fontSize={13}
+                fontFamily="Cinzel, serif"
+                style={{ textShadow: '0 2px 6px rgba(15,23,42,0.85)' }}
+              >
+                {placement.node.name}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+      {selectedStart ? (
+        <div className="pointer-events-none absolute left-4 top-4 z-20 rounded-full border border-slate-600/60 bg-slate-900/70 px-4 py-2 text-[0.65rem] uppercase tracking-[0.3em] text-slate-200">
+          Start: {selectedStart}
+        </div>
+      ) : null}
+      {route ? (
+        <div className="pointer-events-none absolute right-4 top-4 z-20 max-w-xs rounded-3xl border border-cyan-300/50 bg-slate-950/80 p-4 text-sm text-cyan-100">
+          <p className="text-[0.6rem] uppercase tracking-[0.3em] text-cyan-300">Aether-Route</p>
+          <p className="mt-1 font-cinzel text-lg">
+            {route.nodes.join(' ▸ ')}
+          </p>
+          <p className="mt-2 text-xs text-cyan-200">Kosten: {route.cost.toFixed(1)} • ETA: {route.eta}s</p>
+        </div>
+      ) : null}
+      {notice ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
+          <div className="rounded-full border border-amber-400/50 bg-amber-900/70 px-4 py-2 text-[0.65rem] uppercase tracking-[0.3em] text-amber-100 shadow-lg">
+            {notice}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 };
 
-const HexPolygon: React.FC<HexPolygonProps> = React.memo(
-  ({ cx, cy, size, stroke = '#64748b', strokeWidth = 2, fill = 'transparent' }) => {
-    const points = useMemo(() => {
-      const vertices: string[] = [];
-      for (let index = 0; index < 6; index += 1) {
-        const angle = ((60 * index - 30) * Math.PI) / 180;
-        const px = cx + size * Math.cos(angle);
-        const py = cy + size * Math.sin(angle);
-        vertices.push(`${px},${py}`);
-      }
-      return vertices.join(' ');
-    }, [cx, cy, size]);
-
-    return <polygon points={points} stroke={stroke} fill={fill} strokeWidth={strokeWidth} />;
-  },
-);
-HexPolygon.displayName = 'HexPolygon';
-
-const PALETTE = ['#1d4ed8', '#f97316', '#a855f7', '#10b981', '#facc15', '#22d3ee', '#ef4444'];
-
-const pickRegionColor = (index: number) => {
-  const base = PALETTE[index % PALETTE.length];
-  return `${base}AA`;
+const buildHexPoints = (cx: number, cy: number, size: number) => {
+  const points: string[] = [];
+  for (let index = 0; index < 6; index += 1) {
+    const angle = ((60 * index - 30) * Math.PI) / 180;
+    const x = cx + size * Math.cos(angle);
+    const y = cy + size * Math.sin(angle);
+    points.push(`${x},${y}`);
+  }
+  return points.join(' ');
 };
 
-const pickRegionStroke = (index: number) => {
-  const base = PALETTE[index % PALETTE.length];
-  return base;
-};
-
-/** Memoized wrapper for the macro map component. */
+/** Memoized macro map to prevent excessive re-renders during animation ticks. */
 export const MacroMap = React.memo(MacroMapComponent);
 MacroMap.displayName = 'MacroMap';

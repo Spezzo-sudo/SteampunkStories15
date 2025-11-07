@@ -33,8 +33,6 @@ const STAR_HEAT: Record<SectorFeatures['starClass'], number> = {
 
 const MAX_RANDOM_VARIANCE = 0.05;
 
-const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
-
 const mulberry32 = (seed: number) => {
   let t = seed >>> 0;
   return () => {

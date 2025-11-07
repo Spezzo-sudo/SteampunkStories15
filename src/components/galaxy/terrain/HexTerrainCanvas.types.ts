@@ -1,1 +1,8 @@
-export interface TerrainTile {\n  q: number;\n  r: number;\n  sprite: string;\n}\n
+/**
+ * Sprite reference describing a rendered terrain tile in axial coordinates.
+ */
+export interface TerrainTile {
+  q: number;
+  r: number;
+  sprite: string;
+}

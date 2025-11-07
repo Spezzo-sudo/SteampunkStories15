@@ -23,12 +23,12 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 
 const nearlyEqual = (a: number, b: number, epsilon = 0.0001) => Math.abs(a - b) <= epsilon;
 
-type PendingAction = {
+interface PendingAction {
   panX: number;
   panY: number;
   zoomDelta: number;
   anchor: ZoomAnchor | null;
-};
+}
 
 /**
  * Aggregates pan and zoom gestures via requestAnimationFrame to ensure smooth rendering.

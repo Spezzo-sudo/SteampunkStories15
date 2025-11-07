@@ -44,6 +44,18 @@ export interface ShipBlueprint {
   cargo: number;
 }
 
+/**
+ * Progress state tracked for a queued shipyard order.
+ */
+export interface ShipBuildOrder {
+  id: string;
+  blueprintId: string;
+  quantity: number;
+  startTime: number;
+  endTime: number;
+  status: 'queued' | 'building' | 'completed' | 'cancelled';
+}
+
 export enum View {
   Uebersicht = 'Uebersicht',
   Gebaeude = 'Gebaeude',
