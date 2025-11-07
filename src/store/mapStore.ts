@@ -34,8 +34,8 @@ export interface MapStore {
   setAllianceFilter: (value: boolean) => void;
   /** Updates a settlement badge on a specific tile. */
   setSettlement: (regionId: string, tileKey: string, settlement?: Settlement) => void;
-  /** Persists the player's home selection and updates world highlights. */
-  setHome: (regionId: string, q: number, r: number) => void;
+  /** Persists the player's home selection only once and updates world highlights. */
+  setHomeOnce: (regionId: string, q: number, r: number) => boolean;
   /** Returns true once a valid home selection exists. */
   canBuild: () => boolean;
 }
@@ -54,7 +54,11 @@ export const useMapStore = create<MapStore>((set, get) => ({
     try {
       const world = makeWorld();
       world.regions.forEach((region) => ensureRegionCentroid(region, CONFIG.microHexSizePx));
-      set({ world, loadingWorld: false, worldError: null, home: world.home ?? null });
+      const hydratedHome = world.home
+        ? { ...world.home, setAt: world.home.setAt ?? Date.now() }
+        : null;
+      const nextWorld = hydratedHome ? { ...world, home: hydratedHome } : world;
+      set({ world: nextWorld, loadingWorld: false, worldError: null, home: hydratedHome });
     } catch (error) {
       set({ loadingWorld: false, worldError: error instanceof Error ? error.message : 'Unbekannter Fehler' });
     }
@@ -127,15 +131,20 @@ export const useMapStore = create<MapStore>((set, get) => ({
     set({ world: nextWorld, activeRegion });
   },
 
-  setHome: (regionId, q, r) => {
+  setHomeOnce: (regionId, q, r) => {
+    const hasHome = get().home ?? get().world?.home;
+    if (hasHome) {
+      return false;
+    }
     const world = get().world;
     if (!world) {
-      return;
+      return false;
     }
     const tileKey = `${q},${r}`;
-    const nextHome: HomeSelection = { regionId, tileKey };
+    const nextHome: HomeSelection = { regionId, tileKey, setAt: Date.now() };
     const nextWorld: World = { ...world, home: nextHome };
     set({ world: nextWorld, home: nextHome });
+    return true;
   },
 
   canBuild: () => {

@@ -36,9 +36,12 @@ export const fitToBounds = (
   height: number,
   padding: number,
 ) => {
-  const w = bounds.maxX - bounds.minX;
-  const h = bounds.maxY - bounds.minY;
-  const scale = Math.min((width - padding * 2) / w, (height - padding * 2) / h);
+  const availableWidth = Math.max(1, width - padding * 2);
+  const availableHeight = Math.max(1, height - padding * 2);
+  const w = Math.max(1, bounds.maxX - bounds.minX);
+  const h = Math.max(1, bounds.maxY - bounds.minY);
+  const rawScale = Math.min(availableWidth / w, availableHeight / h);
+  const scale = Number.isFinite(rawScale) && rawScale > 0 ? rawScale : 1;
   cam.scale = scale;
   cam.tx = width / 2 - (bounds.minX + w / 2) * scale;
   cam.ty = height / 2 - (bounds.minY + h / 2) * scale;

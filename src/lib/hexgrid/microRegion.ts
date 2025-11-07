@@ -8,6 +8,48 @@ import { BIOME_STYLE, makePattern } from './patterns';
 
 const BIOMES = Object.keys(BIOME_STYLE) as Array<keyof typeof BIOME_STYLE>;
 
+/**
+ * Renders the golden home emblem with an animated glow onto the currently transformed context.
+ */
+const drawHomeEmblem = (
+  ctx: CanvasRenderingContext2D,
+  cam: Camera,
+  dpr: number,
+  size: number,
+  glowStrength: number,
+) => {
+  const ringStroke = strokePx(1.8, cam, dpr);
+  const glowAlpha = 0.35 + glowStrength * 0.45;
+  ctx.save();
+  ctx.lineWidth = ringStroke;
+  ctx.strokeStyle = `rgba(253,224,71,${0.65 + glowStrength * 0.25})`;
+  if (glowStrength > 0) {
+    ctx.shadowColor = `rgba(253,224,71,${glowAlpha})`;
+    ctx.shadowBlur = 24 * glowStrength;
+  }
+  ctx.stroke(hexPath(size - 2.4));
+  ctx.shadowBlur = 0;
+  const crestHeight = size * 0.55;
+  const crestWidth = crestHeight * 0.65;
+  ctx.translate(0, -size * 0.05);
+  ctx.beginPath();
+  ctx.moveTo(0, -crestHeight * 0.55);
+  ctx.lineTo(crestWidth * 0.55, -crestHeight * 0.12);
+  ctx.lineTo(crestWidth * 0.35, crestHeight * 0.55);
+  ctx.lineTo(-crestWidth * 0.35, crestHeight * 0.55);
+  ctx.lineTo(-crestWidth * 0.55, -crestHeight * 0.12);
+  ctx.closePath();
+  const fill = ctx.createLinearGradient(0, -crestHeight * 0.55, 0, crestHeight * 0.55);
+  fill.addColorStop(0, `rgba(254,249,195,${0.92})`);
+  fill.addColorStop(1, `rgba(202,138,4,${0.85})`);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.lineWidth = strokePx(1.2, cam, dpr);
+  ctx.strokeStyle = 'rgba(120,53,15,0.9)';
+  ctx.stroke();
+  ctx.restore();
+};
+
 /** Generates deterministic micro region tiles for the provided region identifier. */
 export const generateRegionTiles = (regionId: string, allianceId?: string) => {
   const coords = disk({ q: 0, r: 0 }, CONFIG.microRegionRadius);
@@ -93,8 +135,8 @@ export const drawRegion = (
   dpr: number,
   region: Region,
   size: number,
-  _timeMs: number,
-  options: { selected?: Tile | null; showAlliances: boolean; homeTileKey?: string | null },
+  timeMs: number,
+  options: { selected?: Tile | null; showAlliances: boolean; homeTileKey?: string | null; homeGlow?: boolean },
 ) => {
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -121,6 +163,7 @@ export const drawRegion = (
   const innerEdge = strokePx(1, cam, dpr);
   const allianceStroke = strokePx(2, cam, dpr);
   const alliances = buildAllianceMap();
+  const glowStrength = options.homeGlow ? (Math.sin(timeMs / 900) + 1) / 2 : 0;
 
   const byBiome = new Map<string, Tile[]>();
   region.tiles.forEach((tile) => {
@@ -135,7 +178,7 @@ export const drawRegion = (
     const style = BIOME_STYLE[biome as keyof typeof BIOME_STYLE];
     let pattern = patternCache.get(biome);
     if (pattern === undefined) {
-      pattern = makePattern(ctx, style.pattern, style.edge, style.base, 0.1);
+      pattern = makePattern(ctx, style.pattern, style.edge, style.base, 0.08);
       patternCache.set(biome, pattern);
     }
     tiles.forEach((tile) => {
@@ -173,16 +216,29 @@ export const drawRegion = (
       }
       if (tile.hasSettlement) {
         ctx.save();
-        ctx.translate(0, -size * 0.25);
-        ctx.fillStyle = '#fde68a';
+        ctx.translate(0, -size * 0.24);
+        ctx.shadowColor = 'rgba(15,23,42,0.65)';
+        ctx.shadowBlur = 10;
+        const badgeRadius = 4.6;
+        const badgeGradient = ctx.createRadialGradient(0, 0, badgeRadius * 0.2, 0, 0, badgeRadius);
+        badgeGradient.addColorStop(0, 'rgba(255,251,235,0.95)');
+        badgeGradient.addColorStop(1, 'rgba(253,224,120,0.85)');
+        ctx.fillStyle = badgeGradient;
         ctx.beginPath();
-        ctx.arc(0, 0, 4.2, 0, Math.PI * 2);
+        ctx.arc(0, 0, badgeRadius, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = '#1f2937';
-        ctx.lineWidth = strokePx(1.4, cam, dpr);
+        ctx.shadowBlur = 0;
+        const alliance = tile.allianceId ? alliances.get(tile.allianceId) : undefined;
+        if (alliance) {
+          ctx.strokeStyle = alliance.color;
+          ctx.lineWidth = strokePx(1.6, cam, dpr);
+          ctx.stroke();
+        }
+        ctx.strokeStyle = 'rgba(15,23,42,0.95)';
+        ctx.lineWidth = strokePx(1.2, cam, dpr);
         ctx.stroke();
-        ctx.fillStyle = '#1f2937';
-        ctx.font = `${8 / dpr}px 'Cinzel', serif`;
+        ctx.fillStyle = 'rgba(30,41,59,0.95)';
+        ctx.font = `${7.5 / dpr}px 'Cinzel', serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.fillText(tile.hasSettlement.icon === 'TOWN' ? '⌂' : '△', 0, 0);
@@ -190,14 +246,7 @@ export const drawRegion = (
       }
 
       if (options.homeTileKey && `${tile.q},${tile.r}` === options.homeTileKey) {
-        ctx.save();
-        ctx.translate(0, size * 0.2);
-        ctx.fillStyle = 'rgba(253,224,71,0.9)';
-        ctx.font = `${12 / dpr}px 'Cinzel', serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('Heimat', 0, 0);
-        ctx.restore();
+        drawHomeEmblem(ctx, cam, dpr, size, glowStrength);
       }
       ctx.restore();
     });
@@ -227,20 +276,6 @@ export const drawRegion = (
   ctx.strokeStyle = 'rgba(148,163,184,0.65)';
   ctx.stroke(path);
   ctx.globalAlpha = 1;
-
-  if (region.centroid) {
-    ctx.save();
-    ctx.translate(region.centroid.x, region.centroid.y);
-    ctx.font = `${14 / dpr}px 'Cinzel', serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineWidth = strokePx(3, cam, dpr);
-    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillStyle = '#f8fafc';
-    ctx.strokeText(region.name, 0, 0);
-    ctx.fillText(region.name, 0, 0);
-    ctx.restore();
-  }
 
   ctx.restore();
 };

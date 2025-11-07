@@ -13,6 +13,7 @@ import { parseCoordinate } from '@/lib/hexgrid/coordinateParser';
 import { OrderSheet, type OrderDraft, type UnitStackSummary } from '@/components/galaxy/OrderSheet';
 import { RegionSummaryTable } from '@/components/galaxy/RegionSummaryTable';
 import { useMapStore } from '@/store/mapStore';
+import { ToastVariant, useUiStore } from '@/store/uiStore';
 
 interface RenderEnv {
   ctx: CanvasRenderingContext2D;
@@ -70,8 +71,9 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   const toggleAllianceFilter = useMapStore((state) => state.toggleAllianceFilter);
   const selectRegion = useMapStore((state) => state.selectRegion);
   const home = useMapStore((state) => state.home ?? state.world?.home ?? null);
-  const setHome = useMapStore((state) => state.setHome);
+  const setHomeOnce = useMapStore((state) => state.setHomeOnce);
   const canBuild = useMapStore((state) => state.canBuild);
+  const pushToast = useUiStore((state) => state.pushToast);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -86,9 +88,12 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   const [coordError, setCoordError] = useState<string | null>(null);
   const [selectedUnitIds, setSelectedUnitIds] = useState<Set<string>>(new Set());
   const [queuedOrders, setQueuedOrders] = useState<OrderDraft[]>([]);
+  const [orderTab, setOrderTab] = useState(0);
 
   const stacks = useMemo(() => buildStacks(region), [region]);
   const homeTileKey = home?.regionId === region.id ? home.tileKey : undefined;
+  const hasHome = Boolean(home);
+  const homeGlowActive = orderTab === 0;
 
   const render = useCallback(
     (time: number) => {
@@ -99,10 +104,11 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
           selected: selectedRef.current,
           showAlliances: allianceFilterOn,
           homeTileKey,
+          homeGlow: homeGlowActive,
         });
       }
     },
-    [allianceFilterOn, homeTileKey],
+    [allianceFilterOn, homeGlowActive, homeTileKey],
   );
 
   const handleResize = useCallback(() => {
@@ -161,7 +167,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
 
   useEffect(() => {
     render(performance.now());
-  }, [allianceFilterOn, render, homeTileKey]);
+  }, [allianceFilterOn, homeGlowActive, render, homeTileKey]);
 
   useEffect(() => {
     selectedRef.current = selectedTile;
@@ -286,8 +292,16 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     if (!selectedTile) {
       return;
     }
-    setHome(region.id, selectedTile.q, selectedTile.r);
-  }, [region.id, selectedTile, setHome]);
+    const ok = setHomeOnce(region.id, selectedTile.q, selectedTile.r);
+    const coordinate = `${selectedTile.q},${selectedTile.r}`;
+    pushToast({
+      title: ok ? 'Heimat gesetzt' : 'Heimat bereits festgelegt',
+      description: ok
+        ? `Startpunkt ${coordinate} in ${region.name} bestätigt.`
+        : 'Der Startpunkt wurde zuvor festgelegt und kann nicht geändert werden.',
+      variant: ok ? ToastVariant.Success : ToastVariant.Info,
+    });
+  }, [pushToast, region.id, region.name, selectedTile, setHomeOnce]);
 
   const isHomeTile = selectedTile ? homeTileKey === toTileKey(selectedTile) : false;
 
@@ -301,21 +315,26 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
           aria-label={`Region ${region.name}`}
           onPointerDown={handlePointerDown}
         />
-        <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-2">
-          <button
-            type="button"
-            className="pointer-events-auto rounded-full border border-slate-600/60 bg-slate-900/80 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.3em] text-slate-100 shadow-lg"
-            onClick={backToMacro}
-          >
-            Zur Übersicht
-          </button>
-          <button
-            type="button"
-            className="pointer-events-auto rounded-full border border-slate-600/60 bg-slate-900/80 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.3em] text-slate-100 shadow-lg"
-            onClick={toggleAllianceFilter}
-          >
-            {allianceFilterOn ? 'Allianzen: EIN' : 'Allianzen: AUS'}
-          </button>
+        <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-3">
+          <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-slate-500/50 bg-slate-900/90 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.4em] text-slate-100 shadow-lg">
+            <span>{region.name}</span>
+          </div>
+          <div className="pointer-events-none flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="pointer-events-auto rounded-full border border-slate-600/60 bg-slate-900/80 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.3em] text-slate-100 shadow-lg"
+              onClick={backToMacro}
+            >
+              Zur Übersicht
+            </button>
+            <button
+              type="button"
+              className="pointer-events-auto rounded-full border border-slate-600/60 bg-slate-900/80 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.3em] text-slate-100 shadow-lg"
+              onClick={toggleAllianceFilter}
+            >
+              {allianceFilterOn ? 'Allianzen: EIN' : 'Allianzen: AUS'}
+            </button>
+          </div>
         </div>
         {!canBuild() && (
           <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-4">
@@ -360,19 +379,25 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
               <p className="text-[0.7rem] text-slate-400">Unbesiedelt</p>
             )}
             <p className="mt-2 text-[0.65rem] text-slate-300">
-              {isHomeTile ? 'Als Heimat markiert' : 'Noch nicht als Heimat gesetzt'}
+              {isHomeTile
+                ? 'Als Heimat markiert'
+                : hasHome
+                  ? 'Startpunkt bereits vergeben'
+                  : 'Noch nicht als Heimat gesetzt'}
             </p>
             <button
               type="button"
               className="mt-3 w-full rounded-lg bg-emerald-600 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-wide text-emerald-50 transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-700"
               onClick={handleHomeSelection}
-              disabled={isHomeTile}
+              disabled={hasHome}
             >
               Heimat festlegen
             </button>
           </div>
         )}
       </div>
+
+      <div className="h-px rounded-full bg-gradient-to-r from-slate-800 via-slate-600/60 to-slate-800" />
 
       <OrderSheet
         available={stacks}
@@ -382,6 +407,8 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
         onCommit={handleCommitOrders}
         disabled={!canBuild()}
         disabledHint={!canBuild() ? 'Heimat wählen, um Einheiten zu kommandieren.' : undefined}
+        activeTab={orderTab}
+        onTabChange={setOrderTab}
       />
 
       <div className="min-h-[240px] rounded-2xl border border-slate-700/60 bg-slate-900/60 shadow-inner">
