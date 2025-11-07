@@ -11,5 +11,5 @@ export const CONFIG = {
   /** Base hex size in pixels for tiles on the micro map. */
   microHexSizePx: 28,
   /** Padding in screen pixels reserved when fitting to bounds. */
-  paddingPx: 64,
+  paddingPx: 80,
 } as const;

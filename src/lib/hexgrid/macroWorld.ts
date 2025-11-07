@@ -77,8 +77,8 @@ export const drawMacro = (
   ctx.scale(cam.scale, cam.scale);
 
   const alliances = buildAllianceMap();
-  const outer = strokePx(6, cam, dpr);
-  const inner = strokePx(2, cam, dpr);
+  const outer = strokePx(4, cam, dpr);
+  const contour = strokePx(2, cam, dpr);
 
   world.regions.forEach((region) => {
     const center = regionAxToPx(region.RQ, region.RR, CONFIG.macroHexRadiusPx);
@@ -93,15 +93,18 @@ export const drawMacro = (
     ctx.shadowBlur = 0;
 
     const alliance = region.allianceId ? alliances.get(region.allianceId) : undefined;
-    const baseStroke = world.allianceFilterOn && alliance ? alliance.color : 'rgba(200,210,220,.85)';
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = baseStroke;
+    ctx.strokeStyle = 'rgba(148,163,184,0.6)';
     ctx.lineWidth = outer;
     ctx.stroke(hexPath(CONFIG.macroHexRadiusPx));
 
-    ctx.strokeStyle = 'rgba(255,255,255,.78)';
-    ctx.lineWidth = inner;
-    ctx.stroke(hexPath(CONFIG.macroHexRadiusPx));
+    if (world.allianceFilterOn && alliance) {
+      ctx.strokeStyle = alliance.color;
+      ctx.lineWidth = contour;
+      ctx.globalAlpha = 0.95;
+      ctx.stroke(hexPath(CONFIG.macroHexRadiusPx - 4));
+      ctx.globalAlpha = 1;
+    }
 
     const isSelected = world.selectedRegionId === region.id;
     const isHome = world.home?.regionId === region.id;
@@ -115,36 +118,14 @@ export const drawMacro = (
     }
 
     if (isHome) {
-      ctx.lineWidth = strokePx(4, cam, dpr);
-      ctx.strokeStyle = 'rgba(251,191,36,0.95)';
-      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = strokePx(3, cam, dpr);
+      ctx.strokeStyle = 'rgba(253,224,71,0.85)';
+      ctx.globalAlpha = 0.85;
       ctx.stroke(hexPath(CONFIG.macroHexRadiusPx - 6));
-      ctx.globalAlpha = 0.4;
-      ctx.fillStyle = 'rgba(253,224,71,0.25)';
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = 'rgba(253,224,71,0.18)';
       ctx.fill(hexPath(CONFIG.macroHexRadiusPx - 10));
       ctx.globalAlpha = 1;
-
-      ctx.font = `${16 / dpr}px 'Cinzel', serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#fde68a';
-      ctx.fillText('★', 0, -CONFIG.macroHexRadiusPx * 0.45);
-    }
-
-    ctx.font = `${14 / dpr}px 'Cinzel', serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineWidth = strokePx(3, cam, dpr);
-    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
-    ctx.fillStyle = '#f8fafc';
-    ctx.strokeText(region.name, 0, 0);
-    ctx.fillText(region.name, 0, 0);
-
-    if (world.allianceFilterOn && alliance) {
-      ctx.font = `${11 / dpr}px 'Inter', sans-serif`;
-      ctx.textBaseline = 'top';
-      ctx.fillStyle = alliance.color;
-      ctx.fillText(alliance.tag, 0, CONFIG.macroHexRadiusPx * 0.3);
     }
 
     ctx.restore();

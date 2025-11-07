@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 interface UnitStackSummary {
   /** Stable identifier to toggle the stack selection. */
@@ -41,6 +41,10 @@ interface OrderSheetProps {
   disabled: boolean;
   /** Optional helper text displayed when actions are disabled. */
   disabledHint?: string;
+  /** Optional externally managed active tab index. */
+  activeTab?: number;
+  /** Notifies the parent when the active tab changes. */
+  onTabChange?: (index: number) => void;
 }
 
 const tabClass = 'rounded-full px-3 py-1 text-xs uppercase tracking-wide transition';
@@ -58,8 +62,26 @@ export const OrderSheet: React.FC<OrderSheetProps> = ({
   onCommit,
   disabled,
   disabledHint,
+  activeTab: activeTabProp,
+  onTabChange,
 }) => {
-  const [activeTab, setActiveTab] = useState(0);
+  const [internalTab, setInternalTab] = useState(activeTabProp ?? 0);
+  const isControlled = typeof activeTabProp === 'number';
+
+  useEffect(() => {
+    if (isControlled) {
+      setInternalTab(activeTabProp ?? 0);
+    }
+  }, [activeTabProp, isControlled]);
+
+  const activeTab = isControlled ? activeTabProp ?? 0 : internalTab;
+
+  const handleTabChange = (index: number) => {
+    if (!isControlled) {
+      setInternalTab(index);
+    }
+    onTabChange?.(index);
+  };
 
   const selectedStacks = useMemo(
     () => available.filter((stack) => selectedIds.has(stack.id)),
@@ -86,7 +108,7 @@ export const OrderSheet: React.FC<OrderSheetProps> = ({
                   ? 'border border-emerald-400/80 bg-emerald-500/20 text-emerald-100'
                   : 'border border-slate-600/60 text-slate-300 hover:border-emerald-500/40 hover:text-emerald-200'
               }`}
-              onClick={() => setActiveTab(index)}
+              onClick={() => handleTabChange(index)}
             >
               {tab.label}
               {index === 0 && available.length ? (
@@ -110,6 +132,9 @@ export const OrderSheet: React.FC<OrderSheetProps> = ({
       </div>
 
       <div className="px-4 pb-3">
+        {disabled && disabledHint ? (
+          <p className="mb-2 text-[0.6rem] uppercase tracking-[0.35em] text-amber-300">{disabledHint}</p>
+        ) : null}
         {activeTab === 0 ? (
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
             {available.length ? (

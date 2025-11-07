@@ -58,6 +58,8 @@ export interface HomeSelection {
   regionId: string;
   /** Tile key inside the region expressed as "q,r". */
   tileKey: string;
+  /** Timestamp recorded when the home was confirmed. */
+  setAt: number;
 }
 
 /** Combined world structure feeding both the macro and micro renderers. */

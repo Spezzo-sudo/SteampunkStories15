@@ -6,8 +6,8 @@ import { useMapStore } from '@/store/mapStore';
 
 interface NodeButtonPlacement {
   id: string;
-  x: number;
-  y: number;
+  left: number;
+  top: number;
   label: string;
 }
 
@@ -46,11 +46,16 @@ const MacroMapComponent: React.FC = () => {
       setButtons([]);
       return;
     }
+    const halfWidth = (CONFIG.macroHexRadiusPx * Math.sqrt(3)) / 2;
+    const halfHeight = CONFIG.macroHexRadiusPx;
+    const margin = 14;
     const placements = currentWorld.regions.map((region) => {
       const center = regionAxToPx(region.RQ, region.RR, CONFIG.macroHexRadiusPx);
-      const x = (cameraRef.current.tx + center.x * cameraRef.current.scale) / env.dpr;
-      const y = (cameraRef.current.ty + center.y * cameraRef.current.scale) / env.dpr;
-      return { id: region.id, x, y, label: region.name } satisfies NodeButtonPlacement;
+      const left =
+        (cameraRef.current.tx + (center.x - halfWidth - margin) * cameraRef.current.scale) / env.dpr;
+      const top =
+        (cameraRef.current.ty + (center.y - halfHeight - margin) * cameraRef.current.scale) / env.dpr;
+      return { id: region.id, left, top, label: region.name } satisfies NodeButtonPlacement;
     });
     setButtons(placements);
   }, []);
@@ -133,8 +138,8 @@ const MacroMapComponent: React.FC = () => {
           <button
             key={button.id}
             type="button"
-            className="pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-700/50 bg-slate-900/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-slate-100 shadow-lg backdrop-blur"
-            style={{ left: `${button.x}px`, top: `${button.y}px` }}
+            className="pointer-events-auto absolute rounded-full border border-slate-700/50 bg-slate-900/80 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.4em] text-slate-100 shadow-lg backdrop-blur transition hover:border-emerald-400/70 hover:text-emerald-200"
+            style={{ left: `${button.left}px`, top: `${button.top}px` }}
             onClick={() => handleSelect(button.id)}
           >
             {button.label}
