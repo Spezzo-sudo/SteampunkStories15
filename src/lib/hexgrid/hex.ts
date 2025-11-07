@@ -22,20 +22,26 @@ export const axialToPx = (q: number, r: number, size: number) => ({
   y: size * (SQRT3 / 2 * (2 * r + q)),
 });
 
-/** Returns the corner position for the given hex corner index. */
+/**
+ * Returns the corner position for the given hex corner index.
+ * The flat-top orientation starts at 0° pointing to the positive X axis.
+ */
 export const hexCorner = (cx: number, cy: number, size: number, index: number) => {
-  const angle = ((60 * index - 30) * Math.PI) / 180;
+  const angle = ((60 * index) * Math.PI) / 180;
   return {
     x: cx + Math.cos(angle) * size,
     y: cy + Math.sin(angle) * size,
   };
 };
 
-/** Builds a reusable Path2D describing a hexagon with the provided radius. */
+/**
+ * Builds a reusable Path2D describing a hexagon with the provided radius.
+ * The generated path matches the flat-top axial layout.
+ */
 export const hexPath = (radius: number) => {
   const path = new Path2D();
   for (let i = 0; i < 6; i += 1) {
-    const angle = ((60 * i - 30) * Math.PI) / 180;
+    const angle = ((60 * i) * Math.PI) / 180;
     const x = Math.cos(angle) * radius;
     const y = Math.sin(angle) * radius;
     if (i === 0) {
