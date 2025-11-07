@@ -22,3 +22,19 @@ if (document.readyState === 'loading') {
 } else {
   renderApp();
 }
+
+const registerServiceWorker = () => {
+  if (!('serviceWorker' in navigator)) {
+    return;
+  }
+
+  navigator.serviceWorker
+    .register('/sw.js', { scope: '/' })
+    .catch((error) => {
+      console.warn('Service worker registration failed', error);
+    });
+};
+
+if (import.meta.env.PROD) {
+  window.addEventListener('load', registerServiceWorker, { once: true });
+}
