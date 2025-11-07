@@ -16,12 +16,15 @@ interface MapStoreState {
   cache: Record<string, RegionData>;
   loadWorld: () => Promise<void>;
   openRegion: (RQ: number, RR: number, seed?: number) => Promise<void>;
+  prefetchRegion: (RQ: number, RR: number, seed?: number) => Promise<void>;
   backToMacro: () => void;
 }
 
 /**
  * Global map store that orchestrates macro ↔ micro navigation and caches region payloads.
  */
+const prefetchInFlight = new Map<string, Promise<RegionData>>();
+
 export const useMapStore = create<MapStoreState>((set, get) => ({
   mode: 'idle',
   regions: [],
@@ -76,6 +79,44 @@ export const useMapStore = create<MapStoreState>((set, get) => ({
       activeRegion: region,
       cache: { ...state.cache, [id]: region },
     }));
+  },
+  prefetchRegion: async (RQ, RR, seed) => {
+    const id = `${RQ}_${RR}`;
+    const { cache } = get();
+    if (cache[id]) {
+      return;
+    }
+
+    const existingRequest = prefetchInFlight.get(id);
+    if (existingRequest) {
+      await existingRequest;
+      return;
+    }
+
+    const request = (async () => {
+      try {
+        const response = await fetch(`/maps/regions/${id}.json`);
+        if (response.ok) {
+          const region = (await response.json()) as RegionData;
+          set((state) => ({ cache: { ...state.cache, [id]: region } }));
+          return region;
+        }
+      } catch (error) {
+        console.warn('Region prefetch failed, falling back to procedural data', error);
+      }
+
+      const deterministicSeed = seed ?? hash32(RQ, RR, 0);
+      const region = generateRegion(RQ, RR, deterministicSeed);
+      set((state) => ({ cache: { ...state.cache, [id]: region } }));
+      return region;
+    })();
+
+    prefetchInFlight.set(id, request);
+    try {
+      await request;
+    } finally {
+      prefetchInFlight.delete(id);
+    }
   },
   backToMacro: () => {
     set({ mode: 'macro', activeRegion: null });

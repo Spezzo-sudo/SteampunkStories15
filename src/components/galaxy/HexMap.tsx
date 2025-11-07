@@ -70,6 +70,10 @@ const MAX_ZOOM = 3.0;
 const LOD_MINOR_GRID = 1.5;
 const DEFAULT_MAP_HEIGHT = 460;
 const BUCKET_SIZE = 256;
+const ZOOM_IN_FACTOR = 1.1;
+const ZOOM_OUT_FACTOR = 0.9;
+
+const clampZoom = (value: number) => Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value));
 
 const aggregateOwners = (
   system: GalaxySystem,
@@ -444,7 +448,13 @@ const HexMap: React.FC<HexMapProps> = ({
     const cursorY = event.clientY - rect.top;
     const worldX = cursorX / currentZoom - panZoomState.x;
     const worldY = cursorY / currentZoom - panZoomState.y;
-    const delta = event.deltaY < 0 ? 0.18 : -0.18;
+    const baseFactor = event.deltaY < 0 ? ZOOM_IN_FACTOR : ZOOM_OUT_FACTOR;
+    const scaledFactor = Math.pow(baseFactor, Math.min(1.8, Math.abs(event.deltaY) / 120));
+    const targetZoom = clampZoom(currentZoom * scaledFactor);
+    const delta = targetZoom - currentZoom;
+    if (Math.abs(delta) < 0.0001) {
+      return;
+    }
     queueZoom(delta, { cursorX, cursorY, worldX, worldY });
   };
 

@@ -119,7 +119,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   const runningConvoys = useRef<Set<string>>(new Set());
   const [pendingConvoy, setPendingConvoy] = useState<{ start: TileData; target: TileData } | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isTableOpen, setIsTableOpen] = useState(true);
+  const [isTableOpen, setIsTableOpen] = useState(false);
   const [mapZoom, setMapZoom] = useState(1.1);
   const [toasts, setToasts] = useState<{ id: string; tone: BannerTone; message: string }[]>([]);
   const [homeTile, setHomeTile] = useState<TileData | null>(null);
@@ -155,7 +155,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     setPendingConvoy(null);
     setToasts([]);
     setConvoyPressure({});
-    setIsTableOpen(true);
+    setIsTableOpen(false);
     setMapZoom(1.1);
     const defaultHome =
       region.tiles.find((tile) => tile.units?.some((id) => id.includes('frachter'))) ??
@@ -164,6 +164,12 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
       null;
     setHomeTile(defaultHome);
   }, [region]);
+
+  const tileLookup = useMemo(() => {
+    const map = new Map<string, TileData>();
+    tiles.forEach((tile) => map.set(`${tile.q}_${tile.r}`, tile));
+    return map;
+  }, [tiles]);
 
   const tilePixelEntries = useMemo<PositionedAxial[]>(
     () =>
@@ -442,12 +448,6 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   );
 
   const filteredTiles = useMemo(() => tiles.filter((tile) => matchesAllianceFilter(tile)), [matchesAllianceFilter, tiles]);
-
-  const tileLookup = useMemo(() => {
-    const map = new Map<string, TileData>();
-    tiles.forEach((tile) => map.set(`${tile.q}_${tile.r}`, tile));
-    return map;
-  }, [tiles]);
 
   const filterLabel = useMemo(() => {
     if (activeAllianceFilter === 'all') {
@@ -794,14 +794,14 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
         </div>
       </div>
       <div className="flex flex-1 overflow-hidden">
-        <div className="relative flex-[3] overflow-hidden">
+        <div className="relative flex-1 overflow-hidden">
           <div className="absolute inset-0">
             <svg
               viewBox="-380 -380 760 760"
               className="h-full w-full"
               role="presentation"
               aria-hidden="true"
-            >
+              >
               <defs>
                 <radialGradient id="region-center" cx="50%" cy="50%" r="50%">
                   <stop offset="0%" stopColor="rgba(248,250,252,0.1)" />
@@ -1070,38 +1070,38 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
               <div className="rounded-full border border-slate-700/60 bg-black/40 px-3 py-1 text-slate-200">{modeHint}</div>
             </div>
           </div>
-        </div>
-        <div
-          className={`relative flex w-full max-w-md flex-col border-l border-yellow-500/20 bg-slate-950/80 transition-transform duration-300 ${
-            isTableOpen ? 'translate-x-0' : 'translate-x-full'
-          }`}
-        >
-          <div className="flex items-center justify-between border-b border-yellow-500/20 px-4 py-3 text-xs uppercase tracking-wide text-yellow-200">
-            <span>Regionstabelle</span>
-            <button
-              type="button"
-              className="rounded-full border border-yellow-500/40 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-yellow-100"
-              onClick={() => setIsTableOpen(false)}
-            >
-              Ausblenden
-            </button>
-          </div>
-          <div className="flex-1 overflow-hidden p-3">
-            <RegionTileTable
-              tiles={filteredTiles}
-              selectedTileId={selectedTileId}
-              startTileId={startTileId}
-              targetTileId={targetTileId}
-              onInspect={handleInspect}
-              onAssignStart={assignStart}
-              onAssignTarget={assignTarget}
-              alliances={alliancesById}
-              filterLabel={filterLabel}
-              totalTiles={tiles.length}
-              isFilterActive={filterIsActive}
-              onClearFilter={() => setActiveAllianceFilter('all')}
-              unitsByTile={unitsByTile}
-            />
+          <div
+            className={`absolute inset-y-0 right-0 z-20 flex w-full max-w-md flex-col border-l border-yellow-500/20 bg-slate-950/80 transition-transform duration-300 ${
+              isTableOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
+            }`}
+          >
+            <div className="flex items-center justify-between border-b border-yellow-500/20 px-4 py-3 text-xs uppercase tracking-wide text-yellow-200">
+              <span>Regionstabelle</span>
+              <button
+                type="button"
+                className="rounded-full border border-yellow-500/40 px-3 py-1 text-[0.6rem] uppercase tracking-wide text-yellow-100"
+                onClick={() => setIsTableOpen(false)}
+              >
+                Ausblenden
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden p-3">
+              <RegionTileTable
+                tiles={filteredTiles}
+                selectedTileId={selectedTileId}
+                startTileId={startTileId}
+                targetTileId={targetTileId}
+                onInspect={handleInspect}
+                onAssignStart={assignStart}
+                onAssignTarget={assignTarget}
+                alliances={alliancesById}
+                filterLabel={filterLabel}
+                totalTiles={tiles.length}
+                isFilterActive={filterIsActive}
+                onClearFilter={() => setActiveAllianceFilter('all')}
+                unitsByTile={unitsByTile}
+              />
+            </div>
           </div>
         </div>
       </div>
