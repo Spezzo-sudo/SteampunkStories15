@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
+import { shallow } from 'zustand/shallow';
 import { MacroMap } from '@/components/galaxy/MacroMap';
 import { RegionView } from '@/components/galaxy/RegionView';
 import { useMapStore } from '@/store/mapStore';
@@ -19,14 +20,17 @@ const WelcomeMode: React.FC = () => (
 
 /** Main galaxy view orchestrating macro map rendering and micro region drilldowns. */
 export default function GalaxyView(): React.ReactElement {
-  const {
-    mode,
-    world,
-    activeRegion,
-    loadWorld,
-    loadingWorld,
-    worldError,
-  } = useMapStore((state) => ({ ...state }));
+  const loadWorld = useMapStore((state) => state.loadWorld);
+  const { mode, world, activeRegion, loadingWorld, worldError } = useMapStore(
+    (state) => ({
+      mode: state.mode,
+      world: state.world,
+      activeRegion: state.activeRegion,
+      loadingWorld: state.loadingWorld,
+      worldError: state.worldError,
+    }),
+    shallow,
+  );
 
   const {
     user,
