@@ -1,13 +1,22 @@
 import { getFirestore, type Firestore } from 'firebase/firestore';
 import { ensureFirebaseApp } from './initFirebase';
 
+let db: Firestore | null = null;
+
 /**
- * Returns the Firestore instance when Firebase is configured; otherwise null.
+ * Returns a memoized instance of the Firestore database.
+ * Throws an error if Firebase is not initialized.
  */
-export const getDb = (): Firestore | null => {
+export const getDb = (): Firestore => {
+  if (db) {
+    return db;
+  }
+
   const app = ensureFirebaseApp();
   if (!app) {
-    return null;
+    throw new Error('Firebase has not been initialized. Cannot access Firestore.');
   }
-  return getFirestore(app);
+
+  db = getFirestore(app);
+  return db;
 };

@@ -3,6 +3,8 @@ import {
   onSnapshot,
   query,
   where,
+  doc,
+  updateDoc,
   type DocumentData,
   type FirestoreDataConverter,
 } from 'firebase/firestore';
@@ -10,7 +12,7 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { Unsubscribe } from 'firebase/auth';
 import { getDb } from './db';
 import { ensureFirebaseApp } from './initFirebase';
-import type { Tile } from '@/data/types';
+import type { Tile, HomeSelection } from '@/data/types';
 import type { Convoy, Unit } from '@/types/convoy';
 
 /**
@@ -155,4 +157,19 @@ export const requestConvoy = async (payload: {
   const result = await callable(payload);
   const data = result.data as { convoyId: string };
   return data;
+};
+
+/**
+ * Updates the world document to set the player's home base.
+ *
+ * @param worldId The ID of the world to update.
+ * @param home The home selection data.
+ */
+export const setWorldHome = async (worldId: string, home: HomeSelection): Promise<void> => {
+  const db = getDb();
+  if (!db) {
+    throw new Error('Datenbankverbindung nicht verfügbar.');
+  }
+  const worldRef = doc(db, 'worlds', worldId);
+  await updateDoc(worldRef, { home });
 };

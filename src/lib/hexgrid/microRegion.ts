@@ -1,9 +1,9 @@
-import type { Region, Tile } from '@/data/types';
+import type { HomeSelection, Region, Tile } from '@/data/types';
 import { buildAllianceMap } from '@/data/factions';
 import { CONFIG } from '@/config/mapConfig';
 import { DIRS, axialToPx, disk, hexCorner, hexPath, key } from './hex';
 import type { Camera } from './viewport';
-import { boundsOf, strokePx } from './viewport';
+import { boundsOf, fitToBounds, strokePx } from './viewport';
 import { BIOME_STYLE, makePattern } from './patterns';
 
 const BIOMES = Object.keys(BIOME_STYLE) as Array<keyof typeof BIOME_STYLE>;
@@ -20,9 +20,6 @@ const loadTexture = (url: string) => {
   return img;
 };
 
-/**
- * Renders the golden home emblem with an animated glow onto the currently transformed context.
- */
 const drawHomeEmblem = (
   ctx: CanvasRenderingContext2D,
   cam: Camera,
@@ -62,7 +59,6 @@ const drawHomeEmblem = (
   ctx.restore();
 };
 
-/** Generates deterministic micro region tiles for the provided region identifier. */
 export const generateRegionTiles = (regionId: string, allianceId?: string) => {
   const coords = disk({ q: 0, r: 0 }, CONFIG.microRegionRadius);
   const baseHash = regionId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -82,7 +78,6 @@ export const generateRegionTiles = (regionId: string, allianceId?: string) => {
   });
 };
 
-/** Computes the hull path and bounding box for a region. */
 export const regionHull = (region: Region, size: number) => {
   type Edge = { a: { x: number; y: number }; b: { x: number; y: number } };
   const edges: Edge[] = [];
@@ -140,8 +135,12 @@ export const regionHull = (region: Region, size: number) => {
   return { path, bounds };
 };
 
-/** Draws the micro region view including biome fills, patterns, badges and selection state. */
-export const drawRegion = (
+export const fitMicroView = (cam: Camera, region: Region, width: number, height: number) => {
+  const { bounds } = regionHull(region, CONFIG.microHexSizePx);
+  fitToBounds(cam, bounds, width, height, CONFIG.paddingPx * 2);
+};
+
+const drawRegion = (
   ctx: CanvasRenderingContext2D,
   cam: Camera,
   dpr: number,
@@ -197,19 +196,23 @@ export const drawRegion = (
       const p = axialToPx(tile.q, tile.r, size);
       ctx.save();
       ctx.translate(p.x, p.y);
+
+      ctx.fillStyle = style.base;
+      ctx.globalAlpha = 1;
+      ctx.fill(hexPath(size - 1.2));
+
       const texture = loadTexture(style.texture);
       if (texture.complete) {
-        ctx.globalAlpha = 0.8;
+        ctx.globalAlpha = 0.4;
         ctx.drawImage(texture, -size, -size, size * 2, size * 2);
       }
-      ctx.fillStyle = style.base;
-      ctx.globalAlpha = 0.92;
-      ctx.fill(hexPath(size - 1.2));
+
       if (pattern) {
         ctx.globalAlpha = 0.12;
         ctx.fillStyle = pattern;
         ctx.fill(hexPath(size - 1.6));
       }
+
       const bevel = ctx.createLinearGradient(0, -size, 0, size);
       bevel.addColorStop(0, 'rgba(255,255,255,0.16)');
       bevel.addColorStop(0.55, 'rgba(255,255,255,0)');
@@ -217,10 +220,12 @@ export const drawRegion = (
       ctx.globalAlpha = 1;
       ctx.fillStyle = bevel;
       ctx.fill(hexPath(size - 1.4));
+
       ctx.globalAlpha = 1;
       ctx.strokeStyle = style.edge;
       ctx.lineWidth = innerEdge;
       ctx.stroke(hexPath(size - 1));
+
       if (options.showAlliances && tile.allianceId) {
         const alliance = alliances.get(tile.allianceId);
         if (alliance) {
@@ -231,6 +236,7 @@ export const drawRegion = (
           ctx.globalAlpha = 1;
         }
       }
+
       if (tile.hasSettlement) {
         ctx.save();
         ctx.translate(0, -size * 0.24);
@@ -297,7 +303,26 @@ export const drawRegion = (
   ctx.restore();
 };
 
-/** Finds the tile whose axial coordinate matches the provided world position. */
+export const drawMicro = (
+  ctx: CanvasRenderingContext2D,
+  cam: Camera,
+  dpr: number,
+  region: Region,
+  home: HomeSelection | null,
+  hovered: { q: number; r: number } | null,
+  timeMs: number,
+) => {
+  const homeTileKey = home?.regionId === region.id ? home.tileKey : null;
+  const selectedTile = hovered ? region.tiles.find((t) => t.q === hovered.q && t.r === hovered.r) : null;
+
+  drawRegion(ctx, cam, dpr, region, CONFIG.microHexSizePx, timeMs, {
+    selected: selectedTile,
+    showAlliances: true,
+    homeTileKey: homeTileKey,
+    homeGlow: true,
+  });
+};
+
 export const pickTileAt = (region: Region, point: { x: number; y: number }, size: number) => {
   let best: { tile: Tile; dist: number } | null = null;
   region.tiles.forEach((tile) => {
@@ -310,8 +335,7 @@ export const pickTileAt = (region: Region, point: { x: number; y: number }, size
   return best?.tile ?? null;
 };
 
-/** Computes a world-space centroid for the region tiles if missing. */
-export const ensureRegionCentroid = (region: Region, size: number) => {
+export const ensureRegionCentroid = (region: Region, size: number): Region => {
   if (region.centroid) {
     return region;
   }
@@ -325,6 +349,5 @@ export const ensureRegionCentroid = (region: Region, size: number) => {
     { x: 0, y: 0 },
   );
   const count = region.tiles.length || 1;
-  region.centroid = { x: sum.x / count, y: sum.y / count };
-  return region;
+  return { ...region, centroid: { x: sum.x / count, y: sum.y / count } };
 };

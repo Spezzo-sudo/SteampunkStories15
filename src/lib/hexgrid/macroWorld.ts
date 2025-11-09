@@ -107,7 +107,14 @@ export const drawMacro = (
     }
 
     const isSelected = world.selectedRegionId === region.id;
+    const isHovered = world.hoveredRegionId === region.id;
     const isHome = world.home?.regionId === region.id;
+    
+    if (isHovered && !isSelected) {
+      ctx.strokeStyle = 'rgba(107, 114, 128, 0.7)';
+      ctx.lineWidth = strokePx(6, cam, dpr);
+      ctx.stroke(hexPath(CONFIG.macroHexRadiusPx));
+    }
 
     if (isSelected) {
       ctx.strokeStyle = 'rgba(34,211,238,0.9)';
@@ -127,6 +134,14 @@ export const drawMacro = (
       ctx.fill(hexPath(CONFIG.macroHexRadiusPx - 10));
       ctx.globalAlpha = 1;
     }
+    
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'black';
+    ctx.shadowBlur = 4;
+    ctx.font = `bold ${CONFIG.macroHexRadiusPx / 4.5}px "Cinzel"`;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.fillText(region.name, 0, 2);
 
     ctx.restore();
   });

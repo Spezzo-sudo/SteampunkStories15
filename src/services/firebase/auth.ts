@@ -76,7 +76,7 @@ const ensureAdminAccount = async (username: string, password: string, authUser: 
 export const signIn = async (username: string, password: string): Promise<void> => {
   const app = ensureFirebaseApp();
   if (!app) {
-    if (username === 'admin' && password === 'admin') {
+    if (username === 'admin' && password === 'admin1') {
       mockUser = {
         uid: 'mock-admin',
         email: usernameToEmail(username),

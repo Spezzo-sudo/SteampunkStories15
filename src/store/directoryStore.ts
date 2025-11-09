@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { immer } from 'zustand/middleware/immer';
 import {
   GalaxyPlanet,
   GalaxySystem,
@@ -19,10 +20,6 @@ interface DirectoryState {
 }
 
 interface DirectoryActions {
-  /**
-   * No-op initializer maintained for API compatibility.
-   * The store ships with mock data eagerly loaded, so the promise resolves immediately.
-   */
   initialize: () => Promise<void>;
   openPlayerProfile: (playerId: string) => void;
   closePlayerProfile: () => void;
@@ -31,6 +28,7 @@ interface DirectoryActions {
   getSystemById: (systemId: string) => GalaxySystem | undefined;
   getAllianceColor: (allianceId?: string) => string | undefined;
   setPlanetOwner: (planetId: string, ownerId: string, allianceId?: string) => void;
+  setPlayerAlliance: (playerId: string, allianceId?: string) => void;
 }
 
 const deriveProfile = (
@@ -65,107 +63,98 @@ const deriveProfile = (
   };
 };
 
-/**
- * Zustand store for directory, profile and favorites state management.
- */
-export const useDirectoryStore = create<DirectoryState & DirectoryActions>((set, get) => ({
-  systems: SYSTEM_SNAPSHOT,
-  players: PLAYER_DIRECTORY,
-  favorites: [],
-  openProfileId: null,
-  profiles: {},
-  currentPlayerId: CURRENT_PLAYER_ID,
-  initialize: async () => {
-    // Mock data already populated; keep the async signature for consumers expecting a promise.
-  },
+export const useDirectoryStore = create<DirectoryState & DirectoryActions>()(
+  immer((set, get) => ({
+    systems: SYSTEM_SNAPSHOT,
+    players: PLAYER_DIRECTORY,
+    favorites: [],
+    openProfileId: null,
+    profiles: {},
+    currentPlayerId: CURRENT_PLAYER_ID,
+    initialize: async () => {},
 
-  openPlayerProfile: (playerId) => {
-    set((state) => {
-      if (state.profiles[playerId]) {
-        return { openProfileId: playerId };
-      }
-      const profile = deriveProfile(playerId, state.systems, state.favorites, state.players);
-      return {
-        openProfileId: playerId,
-        profiles: { ...state.profiles, [playerId]: profile },
-      };
-    });
-  },
+    openPlayerProfile: (playerId) => {
+      set((state) => {
+        if (!state.profiles[playerId]) {
+          state.profiles[playerId] = deriveProfile(playerId, state.systems, state.favorites, state.players);
+        }
+        state.openProfileId = playerId;
+      });
+    },
 
-  closePlayerProfile: () => set({ openProfileId: null }),
+    closePlayerProfile: () => {
+      set((state) => {
+        state.openProfileId = null;
+      });
+    },
 
-  favoritePlanet: (planetId) => {
-    set((state) => {
-      const isFavorite = state.favorites.includes(planetId);
-      const favorites = isFavorite
-        ? state.favorites.filter((id) => id !== planetId)
-        : [...state.favorites, planetId];
-      const profiles = Object.fromEntries(
-        Object.entries(state.profiles).map(([playerId, profile]) => {
-          const planets = profile.planets.map((planet) =>
-            planet.planetId === planetId ? { ...planet, isFavorite: !isFavorite } : planet,
-          );
-          return [playerId, { ...profile, planets }];
-        }),
-      );
-      return { favorites, profiles };
-    });
-  },
-
-  getPlanetById: (planetId) => {
-    const { systems } = get();
-    for (const system of systems) {
-      const planet = system.planets.find((entry) => entry.id === planetId);
-      if (planet) {
-        return planet;
-      }
-    }
-    return undefined;
-  },
-
-  getSystemById: (systemId) => get().systems.find((system) => system.id === systemId),
-
-  getAllianceColor: (allianceId) => {
-    if (!allianceId) {
-      return undefined;
-    }
-    const alliance = ALLIANCE_DIRECTORY.find((entry) => entry.id === allianceId);
-    return alliance?.color;
-  },
-
-  setPlanetOwner: (planetId, ownerId, allianceId) => {
-    set((state) => {
-      let updatedSystems = state.systems;
-      let previousOwnerId: string | undefined;
-      updatedSystems = state.systems.map((system) => {
-        const planets = system.planets.map((planet) => {
-          if (planet.id !== planetId) {
-            return planet;
-          }
-          previousOwnerId = planet.ownerId;
-          return {
-            ...planet,
-            ownerId,
-            allianceId,
-          };
+    favoritePlanet: (planetId) => {
+      set((state) => {
+        const isFavorite = state.favorites.includes(planetId);
+        if (isFavorite) {
+          state.favorites = state.favorites.filter((id) => id !== planetId);
+        } else {
+          state.favorites.push(planetId);
+        }
+        Object.values(state.profiles).forEach((profile) => {
+          profile.planets.forEach((planet) => {
+            if (planet.planetId === planetId) {
+              planet.isFavorite = !isFavorite;
+            }
+          });
         });
-        return { ...system, planets };
       });
+    },
 
-      const profiles = { ...state.profiles };
-      const affectedOwners = new Set<string>();
-      if (previousOwnerId) {
-        affectedOwners.add(previousOwnerId);
+    getPlanetById: (planetId) => {
+      const { systems } = get();
+      for (const system of systems) {
+        const planet = system.planets.find((entry) => entry.id === planetId);
+        if (planet) return planet;
       }
-      affectedOwners.add(ownerId);
-      affectedOwners.forEach((playerId) => {
-        profiles[playerId] = deriveProfile(playerId, updatedSystems, state.favorites, state.players);
-      });
+      return undefined;
+    },
 
-      return {
-        systems: updatedSystems,
-        profiles,
-      };
-    });
-  },
-}));
+    getSystemById: (systemId) => get().systems.find((system) => system.id === systemId),
+
+    getAllianceColor: (allianceId) => {
+      if (!allianceId) return undefined;
+      return ALLIANCE_DIRECTORY.find((entry) => entry.id === allianceId)?.color;
+    },
+
+    setPlanetOwner: (planetId, ownerId, allianceId) => {
+      set((state) => {
+        let previousOwnerId: string | undefined;
+        for (const system of state.systems) {
+          const planet = system.planets.find((p) => p.id === planetId);
+          if (planet) {
+            previousOwnerId = planet.ownerId;
+            planet.ownerId = ownerId;
+            planet.allianceId = allianceId;
+            break;
+          }
+        }
+
+        const affectedOwners = new Set<string>();
+        if (previousOwnerId) affectedOwners.add(previousOwnerId);
+        affectedOwners.add(ownerId);
+
+        affectedOwners.forEach((playerId) => {
+          state.profiles[playerId] = deriveProfile(playerId, state.systems, state.favorites, state.players);
+        });
+      });
+    },
+
+    setPlayerAlliance: (playerId, allianceId) => {
+      set((state) => {
+        const player = state.players.find((p) => p.id === playerId);
+        if (player) {
+          player.allianceId = allianceId;
+        }
+        if (state.profiles[playerId]) {
+          state.profiles[playerId].allianceId = allianceId;
+        }
+      });
+    },
+  })),
+);

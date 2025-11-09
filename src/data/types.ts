@@ -12,6 +12,16 @@ export type Biome =
   | 'MOUNTAIN'
   | 'TUNDRA';
 
+/** User profile tracking game-specific state. */
+export interface PlayerProfile {
+  /** Unique user identifier matching the auth record. */
+  uid: string;
+  /** Player display name. */
+  name: string;
+  /** True if the player has placed their first home settlement. */
+  hasPlacedHome: boolean;
+}
+
 /** Descriptor for a player settlement marker rendered on a tile. */
 export interface Settlement {
   /** Owning player identifier. */

@@ -1,15 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { CONFIG } from '@/config/mapConfig';
-import { drawMacro, fitMacroView, regionAxToPx } from '@/lib/hexgrid/macroWorld';
+import { drawMacro, fitMacroView } from '@/lib/hexgrid/macroWorld';
 import { resizeCanvas, type Camera } from '@/lib/hexgrid/viewport';
 import { useMapStore } from '@/store/mapStore';
-
-interface NodeButtonPlacement {
-  id: string;
-  left: number;
-  top: number;
-  label: string;
-}
+import { regionAxToPx } from '@/lib/hexgrid/macroWorld';
 
 interface RenderEnv {
   ctx: CanvasRenderingContext2D;
@@ -27,9 +21,8 @@ const DEFAULT_CAMERA: Camera = { tx: 0, ty: 0, scale: 1, minScale: 0.5, maxScale
  */
 const MacroMapComponent: React.FC = () => {
   const world = useMapStore((state) => state.world);
-  const allianceFilterOn = world?.allianceFilterOn ?? false;
+  const setHoveredRegion = useMapStore((state) => state.setHoveredRegion);
   const selectRegion = useMapStore((state) => state.selectRegion);
-  const home = useMapStore((state) => state.home ?? state.world?.home ?? null);
   const toggleAllianceFilter = useMapStore((state) => state.toggleAllianceFilter);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -37,28 +30,6 @@ const MacroMapComponent: React.FC = () => {
   const cameraRef = useRef<Camera>({ ...DEFAULT_CAMERA });
   const envRef = useRef<RenderEnv | null>(null);
   const worldRef = useRef(world);
-  const [buttons, setButtons] = useState<NodeButtonPlacement[]>([]);
-
-  const updateButtons = useCallback(() => {
-    const env = envRef.current;
-    const currentWorld = worldRef.current;
-    if (!env || !currentWorld) {
-      setButtons([]);
-      return;
-    }
-    const halfWidth = (CONFIG.macroHexRadiusPx * Math.sqrt(3)) / 2;
-    const halfHeight = CONFIG.macroHexRadiusPx;
-    const margin = 14;
-    const placements = currentWorld.regions.map((region) => {
-      const center = regionAxToPx(region.RQ, region.RR, CONFIG.macroHexRadiusPx);
-      const left =
-        (cameraRef.current.tx + (center.x - halfWidth - margin) * cameraRef.current.scale) / env.dpr;
-      const top =
-        (cameraRef.current.ty + (center.y - halfHeight - margin) * cameraRef.current.scale) / env.dpr;
-      return { id: region.id, left, top, label: region.name } satisfies NodeButtonPlacement;
-    });
-    setButtons(placements);
-  }, []);
 
   const handleResize = useCallback(() => {
     const canvas = canvasRef.current;
@@ -80,17 +51,15 @@ const MacroMapComponent: React.FC = () => {
       cssHeight: result.cssHeight,
     };
     fitMacroView(cameraRef.current, currentWorld, result.width, result.height);
-    updateButtons();
-  }, [updateButtons]);
+  }, []);
 
   useEffect(() => {
     worldRef.current = world ?? null;
     const env = envRef.current;
     if (world && env) {
       fitMacroView(cameraRef.current, world, env.width, env.height);
-      updateButtons();
     }
-  }, [world, updateButtons]);
+  }, [world]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -123,45 +92,71 @@ const MacroMapComponent: React.FC = () => {
     return () => window.cancelAnimationFrame(raf);
   }, []);
 
-  const handleSelect = useCallback(
-    (regionId: string) => {
-      selectRegion(regionId);
-    },
-    [selectRegion],
-  );
+  const getRegionFromMouseEvent = (evt: React.MouseEvent<HTMLDivElement>) => {
+    if (!world?.regions) {
+      return undefined;
+    }
+    const env = envRef.current;
+    const cam = cameraRef.current;
+    if (!env || !canvasRef.current) {
+      return undefined;
+    }
+    const rect = canvasRef.current.getBoundingClientRect();
+    const worldX = (evt.clientX - rect.left - cam.tx) / cam.scale;
+    const worldY = (evt.clientY - rect.top - cam.ty) / cam.scale;
+    
+    let closest = { dist: Infinity, id: '' };
+    for (const region of world.regions) {
+        const center = regionAxToPx(region.RQ, region.RR, CONFIG.macroHexRadiusPx)
+        const dist = Math.hypot(center.x - worldX, center.y - worldY);
+        if (dist < closest.dist) {
+            closest = { dist, id: region.id };
+        }
+    }
+    
+    if (closest.dist < CONFIG.macroHexRadiusPx * 0.9) {
+        return closest.id;
+    }
+    return undefined;
+  };
+
+  const handleMouseMove = (evt: React.MouseEvent<HTMLDivElement>) => {
+    const regionId = getRegionFromMouseEvent(evt);
+    setHoveredRegion(regionId);
+  };
+
+  const handleMouseLeave = () => {
+    setHoveredRegion(undefined);
+  };
+
+  const handleClick = (evt: React.MouseEvent<HTMLDivElement>) => {
+    const regionId = getRegionFromMouseEvent(evt);
+    if (regionId) {
+        selectRegion(regionId);
+    }
+  };
 
   return (
-    <div ref={containerRef} className="relative h-full w-full">
-      <canvas ref={canvasRef} className="h-full w-full" role="img" aria-label="Makrokarte" />
-      <div className="pointer-events-none absolute inset-0">
-        {buttons.map((button) => (
-          <button
-            key={button.id}
-            type="button"
-            className="pointer-events-auto absolute rounded-full border border-slate-700/50 bg-slate-900/80 px-3 py-1 text-[0.65rem] font-semibold uppercase tracking-[0.4em] text-slate-100 shadow-lg backdrop-blur transition hover:border-emerald-400/70 hover:text-emerald-200"
-            style={{ left: `${button.left}px`, top: `${button.top}px` }}
-            onClick={() => handleSelect(button.id)}
-          >
-            {button.label}
-          </button>
-        ))}
-      </div>
-      <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-2">
+    <div 
+        ref={containerRef} 
+        className="relative h-full w-full cursor-pointer" 
+        onClick={handleClick}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={handleMouseLeave}
+    >
+      <canvas ref={canvasRef} className="h-full w-full" role="img" aria-label="Macro-level galaxy map" />
+      <div className="pointer-events-none absolute inset-x-0 top-4 flex justify-center">
         <button
           type="button"
           className="pointer-events-auto rounded-full border border-slate-600/60 bg-slate-900/80 px-4 py-2 text-[0.7rem] font-semibold uppercase tracking-[0.3em] text-slate-100 shadow-lg"
-          onClick={toggleAllianceFilter}
+          onClick={(evt) => {
+            evt.stopPropagation();
+            toggleAllianceFilter();
+          }}
         >
-          {allianceFilterOn ? 'Allianzen: EIN' : 'Allianzen: AUS'}
+          {world?.allianceFilterOn ? 'Alliances: ON' : 'Alliances: OFF'}
         </button>
       </div>
-      {!home && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
-          <div className="pointer-events-auto max-w-sm rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-6 py-5 text-center text-sm uppercase tracking-[0.35em] text-emerald-100 shadow-xl">
-            Wähle einen Startplaneten, um die Karte freizuschalten.
-          </div>
-        </div>
-      )}
     </div>
   );
 };
