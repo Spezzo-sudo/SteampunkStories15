@@ -298,8 +298,7 @@ export const drawRegion = (
 };
 
 /** Finds the tile whose axial coordinate matches the provided world position. */
-export const pickTileAt = (region: Region, point: { x: number; y: a ist der Code in RegionView.tsx, der die Kamera-Transformationen anwendet.
-x number; y: number }, size: number) => {
+export const pickTileAt = (region: Region, point: { x: number; y: number }, size: number) => {
   let best: { tile: Tile; dist: number } | null = null;
   region.tiles.forEach((tile) => {
     const p = axialToPx(tile.q, tile.r, size);

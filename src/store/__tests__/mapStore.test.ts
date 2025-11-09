@@ -7,8 +7,10 @@ const resetStore = () => {
     world: null,
     activeRegion: null,
     home: null,
+    worldId: 'playtest-world',
     loadingWorld: false,
     worldError: null,
+    regionUnsubscribe: null,
   });
 };
 

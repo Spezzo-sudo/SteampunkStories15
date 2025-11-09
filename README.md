@@ -9,6 +9,10 @@ Ein Vite + React Prototyp für die Steampunk-Raiders Verwaltungssimulation.
 
 ## Lokale Entwicklung
 
+0. Setup-Skript ausführen (legt `.env.local` an und installiert Dependencies, wenn nötig):
+   ```bash
+   ./scripts/setup.sh
+   ```
 1. Abhängigkeiten installieren:
    ```bash
    npm install
@@ -70,10 +74,50 @@ powershell -ExecutionPolicy Bypass -File .\start-game.ps1
 
 ## Umgebungsvariablen
 
-Die API-Schlüssel werden über `GEMINI_API_KEY` aus einer `.env` Datei geladen. Lokale Builds funktionieren auch ohne Schlüssel,
-solange keine API-Aufrufe ausgelöst werden.
+Die Anwendung erwartet folgende Variablen in `.env.local`:
+
+```
+VITE_BASE_URL=/<optional Subpfad>
+VITE_FIREBASE_API_KEY=...
+VITE_FIREBASE_AUTH_DOMAIN=...
+VITE_FIREBASE_PROJECT_ID=...
+VITE_FIREBASE_STORAGE_BUCKET=...
+VITE_FIREBASE_MESSAGING_SENDER_ID=...
+VITE_FIREBASE_APP_ID=...
+VITE_WORLD_ID=playtest-world
+```
+
+Ohne Firebase-Konfiguration läuft der Client im Offline-Demomodus, unterstützt aber Login und Karteninteraktion nur mit Mock-Daten.
 
 ## Projektstatus
+
+## Firebase Backend
+
+### Authentifizierung & Standardzugang
+
+- Die Login-Maske verwendet Benutzername/Passwort. Der Benutzername wird intern zu `@steampunk.local` ergänzt, damit Firebase mit E-Mail/Passwort arbeiten kann.
+- Beim ersten Start versucht der Client automatisch, den Zugang `admin / admin` anzulegen (`ensureDefaultAdmin`). Das funktioniert nur, wenn im Firebase-Projekt "E-Mail/Passwort" aktiviert ist.
+- Ohne Firebase-Konfiguration akzeptiert der Client weiterhin `admin / admin` im Offline-Modus.
+
+### Firestore-Struktur
+
+- `worlds/{worldId}` – Metadaten zum Spieluniversum.
+- `worlds/{worldId}/regions/{regionId}` – Hex-Cluster (RQ/RR) mit Tile-Unterkollektion.
+- `worlds/{worldId}/regions/{regionId}/tiles/{q_r}` – Tile-Biome inkl. optionaler Siedlung (`settlement`).
+- `worlds/{worldId}/units/{unitId}` – Einheiten mit `ownerId`, Tempo, Druckkapazität usw.
+- `worlds/{worldId}/convoys/{convoyId}` – Serverseitige Missionsaufträge (State-Maschine).
+
+### Cloud Functions
+
+- `functions/src/index.ts` stellt `createConvoy` (callable) und `convoyTick` (Pub/Sub Cron) bereit.
+- Build: `cd functions && npm run build` (nutzt `tsup`, Ziel: Node 20 CommonJS).
+- Deployment: `firebase deploy --only functions` (Service-Account via GitHub Actions `FIREBASE_SERVICE_ACCOUNT`).
+
+### Hosting & Staging
+
+- `firebase.json` enthält SPA-Rewrite-Regeln für Vite.
+- `./.github/workflows/deploy.yml` (neu erstellen) kann Firebase Hosting automatisieren – Secrets erforderlich: `FIREBASE_SERVICE_ACCOUNT`.
+- Für lokale Previews `firebase emulators:start --only hosting,functions,firestore` nutzen (nach `npm run build`).
 
 ### Erledigt
 - Vollständige Mock-Galaxie mit ~3 000 Systemen, Spielern und Allianzen generiert (`src/lib/mockFactory.ts`).

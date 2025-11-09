@@ -13,7 +13,7 @@ import { resizeCanvas, type Camera, fitToBounds } from '@/lib/hexgrid/viewport';
 import { parseCoordinate } from '@/lib/hexgrid/coordinateParser';
 import { OrderSheet, type OrderDraft, type UnitStackSummary } from '@/components/galaxy/OrderSheet';
 import { RegionSummaryTable } from '@/components/galaxy/RegionSummaryTable';
-import { planConvoy } from '@/lib/pathfinding';
+import { planConvoy } from '@/lib/movement/planning';
 import { ActionType } from '@/types/convoy';
 import { runConvoy } from '@/lib/movement/runner';
 import { axialToPx, type Axial } from '@/lib/hexgrid/hex';
@@ -22,6 +22,9 @@ import { ConvoyActionModal } from './ConvoyActionModal';
 import { ToastVariant, useUiStore } from '@/store/uiStore';
 import { UnitSelectionModal } from './UnitSelectionModal';
 import { BIOME_STYLE } from '@/lib/biomeStyle';
+import { hasFirebaseConfig } from '@/config/firebaseConfig';
+import { requestConvoy } from '@/services/firebase/gameApi';
+import { useSessionStore } from '@/store/sessionStore';
 
 interface RenderEnv {
   ctx: CanvasRenderingContext2D;
@@ -81,7 +84,9 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   const home = useMapStore((state) => state.home ?? state.world?.home ?? null);
   const setHomeOnce = useMapStore((state) => state.setHomeOnce);
   const canBuild = useMapStore((state) => state.canBuild);
+  const worldId = useMapStore((state) => state.worldId);
   const pushToast = useUiStore((state) => state.pushToast);
+  const sessionUser = useSessionStore((state) => state.user);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -367,7 +372,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
 
   const isHomeTile = selectedTile ? homeTileKey === toTileKey(selectedTile) : false;
 
-  const handleConvoyConfirm = (convoy: Convoy, units: Unit[]) => {
+  const handleConvoyConfirm = async (convoy: Convoy, units: Unit[]) => {
     const worldToPx = (ax: Axial) => axialToPx(ax.q, ax.r, CONFIG.microHexSizePx);
 
     const onStep = (ax: Axial) => {
@@ -378,16 +383,46 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
       }
     };
 
+    if (hasFirebaseConfig()) {
+      try {
+        await requestConvoy({
+          worldId,
+          regionId: region.id,
+          origin: { q: convoy.origin.q, r: convoy.origin.r },
+          target: { q: convoy.target.q, r: convoy.target.r },
+          unitIds: convoy.unitIds,
+          action: convoy.action,
+        });
+        pushToast({
+          title: 'Konvoi übergeben',
+          description: 'Der Auftrag wurde an den Server gesendet.',
+          variant: ToastVariant.Success,
+        });
+        setMovementPlan(null);
+        setTargetSelectMode(false);
+      } catch (error) {
+        pushToast({
+          title: 'Konvoi fehlgeschlagen',
+          description:
+            error instanceof Error
+              ? error.message
+              : 'Der Auftrag konnte nicht angelegt werden.',
+          variant: ToastVariant.Warning,
+        });
+      }
+      return;
+    }
+
     const onState = (state: Convoy['state']) => {
-      console.log('Convoy state:', state);
+      console.log('Konvoi Status (lokal):', state);
     };
 
     const onDone = (success: boolean) => {
       if (success && convoy.action === ActionType.COLONIZE) {
         useMapStore
           .getState()
-          .setSettlement(convoy.regionId, `${convoy.target.q},${convoy.target.r}`, {
-            playerId: convoy.playerId,
+          .setSettlement(region.id, `${convoy.target.q},${convoy.target.r}`, {
+            playerId: sessionUser?.uid ?? 'local-player',
             icon: 'OUTPOST',
           });
       }
@@ -395,6 +430,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
         unitMarkerRef.current.style.opacity = '0';
       }
       setMovementPlan(null);
+      setTargetSelectMode(false);
     };
 
     runConvoy(convoy, units, worldToPx, onStep, onState, onDone);
@@ -405,7 +441,10 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
       {movementPlan && !movementPlan.target && (
         <UnitSelectionModal
           units={movementPlan.units}
-          onClose={() => setMovementPlan(null)}
+          onClose={() => {
+            setMovementPlan(null);
+            setTargetSelectMode(false);
+          }}
           onUnitsSelected={(units) => {
             setMovementPlan((prev) => (prev ? { ...prev, units } : null));
             setTargetSelectMode(true);
@@ -419,7 +458,10 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
           target={movementPlan.target}
           availableUnits={movementPlan.units}
           onConfirm={handleConvoyConfirm}
-          onClose={() => setMovementPlan(null)}
+          onClose={() => {
+            setMovementPlan(null);
+            setTargetSelectMode(false);
+          }}
         />
       )}
       <section className="region-container-fade-in h-[calc(100dvh-56px)] grid grid-rows-[minmax(420px,1fr)_auto_minmax(200px,1fr)] gap-3 p-4">

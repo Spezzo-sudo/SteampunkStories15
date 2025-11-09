@@ -2,6 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { MacroMap } from '@/components/galaxy/MacroMap';
 import { RegionView } from '@/components/galaxy/RegionView';
 import { useMapStore } from '@/store/mapStore';
+import { useSessionStore } from '@/store/sessionStore';
 
 /**
  * Main galaxy view orchestrating macro map rendering and micro region drilldowns.
@@ -13,12 +14,16 @@ export default function GalaxyView(): React.ReactElement {
   const loadWorld = useMapStore((state) => state.loadWorld);
   const loadingWorld = useMapStore((state) => state.loadingWorld);
   const worldError = useMapStore((state) => state.worldError);
+  const sessionUser = useSessionStore((state) => state.user);
 
   const regionCount = useMemo(() => world?.regions.length ?? 0, [world]);
 
   useEffect(() => {
+    if (!sessionUser) {
+      return;
+    }
     void loadWorld();
-  }, [loadWorld]);
+  }, [loadWorld, sessionUser]);
 
   if (mode === 'micro' && activeRegion) {
     return (
