@@ -11,7 +11,7 @@ interface ConvoyActionModalProps {
   target: TileData;
   availableUnits: Unit[];
   onClose: () => void;
-  onConfirm: (convoy: Convoy, units: Unit[]) => void;
+  onConfirm: (convoy: Convoy, units: Unit[]) => Promise<void> | void;
 }
 
 const ACTION_LABEL: Record<ActionType, string> = {
@@ -50,6 +50,7 @@ export const ConvoyActionModal: React.FC<ConvoyActionModalProps> = ({
   const [selectedUnits, setSelectedUnits] = useState<string[]>(() => availableUnits.map((unit) => unit.id));
   const [action, setAction] = useState<ActionType>(ActionType.SCOUT);
   const [warning, setWarning] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setSelectedUnits(availableUnits.map((unit) => unit.id));
@@ -81,8 +82,8 @@ export const ConvoyActionModal: React.FC<ConvoyActionModalProps> = ({
     setWarning(plan.reason);
   }, [plan]);
 
-  const handleConfirm = () => {
-    if (!plan || !plan.ok) {
+  const handleConfirm = async () => {
+    if (!plan || !plan.ok || submitting) {
       return;
     }
     const convoyUnits = selectedUnitObjects;
@@ -101,7 +102,14 @@ export const ConvoyActionModal: React.FC<ConvoyActionModalProps> = ({
       state: 'queued',
       region,
     };
-    onConfirm(convoy, convoyUnits);
+    setSubmitting(true);
+    try {
+      await Promise.resolve(onConfirm(convoy, convoyUnits));
+    } catch (error) {
+      console.error('Konvoi konnte nicht gestartet werden', error);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -205,11 +213,11 @@ export const ConvoyActionModal: React.FC<ConvoyActionModalProps> = ({
             </div>
             <button
               type="button"
-              disabled={!plan || !plan.ok}
+              disabled={!plan || !plan.ok || submitting}
               onClick={handleConfirm}
-              className="w-full rounded-xl border border-emerald-400/70 bg-emerald-500/20 py-3 text-sm uppercase tracking-wide text-emerald-100 disabled:cursor-not-allowed disabled:border-slate-700/60 disabled:bg-slate-900/40 disabled:text-slate-500"
+              className="w-full rounded-xl border border-emerald-400/70 bg-emerald-500/20 py-3 text-sm uppercase tracking-wide text-emerald-100 transition disabled:cursor-not-allowed disabled:border-slate-700/60 disabled:bg-slate-900/40 disabled:text-slate-500"
             >
-              Konvoi starten
+              {submitting ? 'Übermittle …' : 'Konvoi starten'}
             </button>
             {warning ? (
               <div className="rounded-xl border border-rose-400/50 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">

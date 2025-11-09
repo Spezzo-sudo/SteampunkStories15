@@ -10,6 +10,9 @@ import PlayerModal from '@/components/directory/PlayerModal';
 import { useDirectoryStore } from '@/store/directoryStore';
 import { useMessageStore } from '@/store/messageStore';
 import { useAllianceStore } from '@/store/allianceStore';
+import { useSessionStore } from '@/store/sessionStore';
+import { LoginScreen } from '@/components/auth/LoginScreen';
+import { useMapStore } from '@/store/mapStore';
 
 /**
  * Die Hauptkomponente der Anwendung.
@@ -18,6 +21,13 @@ import { useAllianceStore } from '@/store/allianceStore';
  */
 const App: React.FC = () => {
   useGameTick();
+  const initializeSession = useSessionStore((state) => state.initialize);
+  const sessionInitializing = useSessionStore((state) => state.initializing);
+  const sessionUser = useSessionStore((state) => state.user);
+  const login = useSessionStore((state) => state.login);
+  const authError = useSessionStore((state) => state.error);
+  const sessionWorldId = useSessionStore((state) => state.worldId);
+  const setWorldId = useMapStore((state) => state.setWorldId);
   const openProfileId = useDirectoryStore((state) => state.openProfileId);
   const profiles = useDirectoryStore((state) => state.profiles);
   const closePlayerProfile = useDirectoryStore((state) => state.closePlayerProfile);
@@ -30,9 +40,34 @@ const App: React.FC = () => {
   const profile = openProfileId ? profiles[openProfileId] : undefined;
 
   useEffect(() => {
+    initializeSession().catch((error) => {
+      console.error('Session konnte nicht initialisiert werden.', error);
+    });
+  }, [initializeSession]);
+
+  useEffect(() => {
+    setWorldId(sessionWorldId);
+  }, [sessionWorldId, setWorldId]);
+
+  useEffect(() => {
+    if (!sessionUser) {
+      return;
+    }
     initializeDirectory().catch(() => undefined);
     initializeAlliance().catch(() => undefined);
-  }, [initializeAlliance, initializeDirectory]);
+  }, [initializeAlliance, initializeDirectory, sessionUser]);
+
+  if (sessionInitializing) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-950 text-white">
+        <p className="text-sm uppercase tracking-[0.3em] text-amber-300">Starte Äthernetzwerk…</p>
+      </div>
+    );
+  }
+
+  if (!sessionUser) {
+    return <LoginScreen onSubmit={login} loading={sessionInitializing} error={authError} />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">

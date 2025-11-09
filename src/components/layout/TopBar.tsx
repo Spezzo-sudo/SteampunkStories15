@@ -2,6 +2,7 @@ import React from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { ResourceType } from '@/types';
 import ProgressBar from '@/components/ui/ProgressBar';
+import { useSessionStore } from '@/store/sessionStore';
 
 const formatNumber = (num: number) => Math.floor(num).toLocaleString('de-DE');
 
@@ -76,25 +77,49 @@ const KesseldruckDisplay: React.FC = () => {
 const TopBar: React.FC = () => {
   const resources = useGameStore((state) => state.resources);
   const storage = useGameStore((state) => state.storage);
+  const sessionUser = useSessionStore((state) => state.user);
+  const logout = useSessionStore((state) => state.logout);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Logout fehlgeschlagen', error);
+    }
+  };
 
   return (
-    <div className="flex flex-wrap justify-center gap-3">
-      <ResourceDisplay
-        type={ResourceType.Orichalkum}
-        current={resources[ResourceType.Orichalkum]}
-        capacity={storage[ResourceType.Orichalkum]}
-      />
-      <ResourceDisplay
-        type={ResourceType.Fokuskristalle}
-        current={resources[ResourceType.Fokuskristalle]}
-        capacity={storage[ResourceType.Fokuskristalle]}
-      />
-      <ResourceDisplay
-        type={ResourceType.Vitriol}
-        current={resources[ResourceType.Vitriol]}
-        capacity={storage[ResourceType.Vitriol]}
-      />
-      <KesseldruckDisplay />
+    <div className="flex flex-wrap items-center justify-center gap-3">
+      <div className="flex flex-1 flex-wrap justify-center gap-3">
+        <ResourceDisplay
+          type={ResourceType.Orichalkum}
+          current={resources[ResourceType.Orichalkum]}
+          capacity={storage[ResourceType.Orichalkum]}
+        />
+        <ResourceDisplay
+          type={ResourceType.Fokuskristalle}
+          current={resources[ResourceType.Fokuskristalle]}
+          capacity={storage[ResourceType.Fokuskristalle]}
+        />
+        <ResourceDisplay
+          type={ResourceType.Vitriol}
+          current={resources[ResourceType.Vitriol]}
+          capacity={storage[ResourceType.Vitriol]}
+        />
+        <KesseldruckDisplay />
+      </div>
+      {sessionUser && (
+        <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/40 px-4 py-2 text-xs uppercase tracking-wide text-gray-200">
+          <span className="font-semibold text-amber-300">{sessionUser.email ?? 'Commander'}</span>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="rounded-lg border border-amber-400/60 px-3 py-1 font-semibold text-amber-300 transition hover:border-amber-200 hover:text-amber-100"
+          >
+            Logout
+          </button>
+        </div>
+      )}
     </div>
   );
 };
