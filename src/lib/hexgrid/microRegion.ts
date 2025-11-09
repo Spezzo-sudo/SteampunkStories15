@@ -8,6 +8,18 @@ import { BIOME_STYLE, makePattern } from './patterns';
 
 const BIOMES = Object.keys(BIOME_STYLE) as Array<keyof typeof BIOME_STYLE>;
 
+const imageCache = new Map<string, HTMLImageElement>();
+
+const loadTexture = (url: string) => {
+  if (imageCache.has(url)) {
+    return imageCache.get(url)!;
+  }
+  const img = new Image();
+  img.src = url;
+  imageCache.set(url, img);
+  return img;
+};
+
 /**
  * Renders the golden home emblem with an animated glow onto the currently transformed context.
  */
@@ -185,6 +197,11 @@ export const drawRegion = (
       const p = axialToPx(tile.q, tile.r, size);
       ctx.save();
       ctx.translate(p.x, p.y);
+      const texture = loadTexture(style.texture);
+      if (texture.complete) {
+        ctx.globalAlpha = 0.8;
+        ctx.drawImage(texture, -size, -size, size * 2, size * 2);
+      }
       ctx.fillStyle = style.base;
       ctx.globalAlpha = 0.92;
       ctx.fill(hexPath(size - 1.2));
@@ -281,7 +298,8 @@ export const drawRegion = (
 };
 
 /** Finds the tile whose axial coordinate matches the provided world position. */
-export const pickTileAt = (region: Region, point: { x: number; y: number }, size: number) => {
+export const pickTileAt = (region: Region, point: { x: number; y: a ist der Code in RegionView.tsx, der die Kamera-Transformationen anwendet.
+x number; y: number }, size: number) => {
   let best: { tile: Tile; dist: number } | null = null;
   region.tiles.forEach((tile) => {
     const p = axialToPx(tile.q, tile.r, size);

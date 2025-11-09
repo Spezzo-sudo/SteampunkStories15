@@ -18,18 +18,20 @@ export interface BiomeVisualStyle {
   fill: string;
   edge: string;
   pattern: BiomePattern;
+  backgroundGradient: string;
+  texture: string;
 }
 
 /** Map of biome codes to their visual styling (fill, edge and procedural pattern). */
 export const BIOME_STYLE: Record<Biome, BiomeVisualStyle> = {
-  IG: { fill: '#E08A3A', edge: '#F8D6B6', pattern: 'diag' },
-  CL: { fill: '#8B5CF6', edge: '#DEC7FF', pattern: 'dots' },
-  GL: { fill: '#6D28D9', edge: '#D9C4FF', pattern: 'raute' },
-  HE: { fill: '#E58CA4', edge: '#FFE0E9', pattern: 'noise' },
-  DK: { fill: '#78A65B', edge: '#DCF0C9', pattern: 'dots' },
-  EO: { fill: '#7BAA6D', edge: '#E1F3D2', pattern: 'diag' },
-  BR: { fill: '#E4C045', edge: '#FFF2B0', pattern: 'raute' },
-  NE: { fill: '#B56F74', edge: '#FFD2D6', pattern: 'noise' },
+  IG: { fill: '#E08A3A', edge: '#F8D6B6', pattern: 'diag', backgroundGradient: 'radial-gradient(circle, #5c3c1a 0%, #1a1a2e 70%)', texture: '/assets/tiles256/aethernebel_biom.png' },
+  CL: { fill: '#8B5CF6', edge: '#DEC7FF', pattern: 'dots', backgroundGradient: 'radial-gradient(circle, #3a2d5a 0%, #1a1a2e 70%)', texture: '/assets/tiles256/kristallriff_biom.png' },
+  GL: { fill: '#6D28D9', edge: '#D9C4FF', pattern: 'raute', backgroundGradient: 'radial-gradient(circle, #2d1a5a 0%, #1a1a2e 70%)', texture: '/assets/tiles256/gasriese_ringe_biom.png' },
+  HE: { fill: '#E58CA4', edge: '#FFE0E9', pattern: 'noise', backgroundGradient: 'radial-gradient(circle, #5a3a4a 0%, #1a1a2e 70%)', texture: '/assets/tiles256/schwerkraftbruch_biom.png' },
+  DK: { fill: '#78A65B', edge: '#DCF0C9', pattern: 'dots', backgroundGradient: 'radial-gradient(circle, #3a5a3a 0%, #1a1a2e 70%)', texture: '/assets/tiles256/trummerfeld_biom.png' },
+  EO: { fill: '#7BAA6D', edge: '#E1F3D2', pattern: 'diag', backgroundGradient: 'radial-gradient(circle, #3a5a3a 0%, #1a1a2e 70%)', texture: '/assets/tiles256/wuste_biom.png' },
+  BR: { fill: '#E4C045', edge: '#FFF2B0', pattern: 'raute', backgroundGradient: 'radial-gradient(circle, #5a5a1a 0%, #1a1a2e 70%)', texture: '/assets/tiles256/messing_metropole_biom.png' },
+  NE: { fill: '#B56F74', edge: '#FFD2D6', pattern: 'noise', backgroundGradient: 'radial-gradient(circle, #5a3a3a 0%, #1a1a2e 70%)', texture: '/assets/tiles256/eis_biom.png' },
 };
 
 /**

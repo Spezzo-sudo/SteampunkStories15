@@ -7,13 +7,21 @@ import React, {
 } from 'react';
 import { CONFIG } from '@/config/mapConfig';
 import type { Region, Tile } from '@/data/types';
+import type { Unit, Convoy } from '@/types/convoy';
 import { drawRegion, pickTileAt, regionHull } from '@/lib/hexgrid/microRegion';
 import { resizeCanvas, type Camera, fitToBounds } from '@/lib/hexgrid/viewport';
 import { parseCoordinate } from '@/lib/hexgrid/coordinateParser';
 import { OrderSheet, type OrderDraft, type UnitStackSummary } from '@/components/galaxy/OrderSheet';
 import { RegionSummaryTable } from '@/components/galaxy/RegionSummaryTable';
+import { planConvoy } from '@/lib/pathfinding';
+import { ActionType } from '@/types/convoy';
+import { runConvoy } from '@/lib/movement/runner';
+import { axialToPx, type Axial } from '@/lib/hexgrid/hex';
 import { useMapStore } from '@/store/mapStore';
+import { ConvoyActionModal } from './ConvoyActionModal';
 import { ToastVariant, useUiStore } from '@/store/uiStore';
+import { UnitSelectionModal } from './UnitSelectionModal';
+import { BIOME_STYLE } from '@/lib/biomeStyle';
 
 interface RenderEnv {
   ctx: CanvasRenderingContext2D;
@@ -81,6 +89,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   const envRef = useRef<RenderEnv | null>(null);
   const regionRef = useRef<Region | null>(region);
   const selectedRef = useRef<Tile | null>(null);
+  const unitMarkerRef = useRef<HTMLDivElement>(null);
   const pendingFocusRef = useRef<{ regionId: string; q: number; r: number } | null>(null);
 
   const [selectedTile, setSelectedTile] = useState<Tile | null>(null);
@@ -89,11 +98,28 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   const [selectedUnitIds, setSelectedUnitIds] = useState<Set<string>>(new Set());
   const [queuedOrders, setQueuedOrders] = useState<OrderDraft[]>([]);
   const [orderTab, setOrderTab] = useState(0);
+  const [movementPlan, setMovementPlan] = useState<{
+    origin: Tile;
+    units: Unit[];
+    target?: Tile;
+  } | null>(null);
+  const [targetSelectMode, setTargetSelectMode] = useState(false);
 
   const stacks = useMemo(() => buildStacks(region), [region]);
   const homeTileKey = home?.regionId === region.id ? home.tileKey : undefined;
   const hasHome = Boolean(home);
   const homeGlowActive = orderTab === 0;
+
+  const dominantBiome = useMemo(() => {
+    const biomeCounts = region.tiles.reduce(
+      (acc, tile) => {
+        acc[tile.biome] = (acc[tile.biome] || 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>,
+    );
+    return Object.entries(biomeCounts).sort((a, b) => b[1] - a[1])[0][0];
+  }, [region]);
 
   const render = useCallback(
     (time: number) => {
@@ -140,13 +166,8 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
     selectedRef.current = null;
     setSelectedTile(null);
     setSelectedUnitIds(new Set());
-    const env = envRef.current;
-    if (env) {
-      const { bounds } = regionHull(region, CONFIG.microHexSizePx);
-      fitToBounds(cameraRef.current, bounds, env.width, env.height, CONFIG.paddingPx);
-      render(performance.now());
-    }
-  }, [region, render]);
+    handleResize();
+  }, [region, handleResize]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -204,11 +225,52 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<HTMLCanvasElement>) => {
       const tile = getTileFromEvent(event);
-      if (tile) {
-        setSelectedTile(tile);
+      if (!tile) {
+        return;
+      }
+
+      if (targetSelectMode) {
+        handleTargetSelect(tile);
+      } else {
+        const unitsOnTile = world?.units.filter(
+          (u) => u.location.q === tile.q && u.location.r === tile.r && u.regionId === region.id,
+        );
+        if (unitsOnTile && unitsOnTile.length > 0 && tile.allianceId === world?.player.allianceId) {
+          setMovementPlan({ origin: tile, units: unitsOnTile });
+        } else {
+          setSelectedTile(tile);
+        }
       }
     },
-    [getTileFromEvent],
+    [getTileFromEvent, region.id, targetSelectMode, world],
+  );
+
+  const handleTargetSelect = useCallback(
+    (tile: Tile) => {
+      if (!movementPlan) {
+        return;
+      }
+      const plan = planConvoy(
+        region,
+        { q: movementPlan.origin.q, r: movementPlan.origin.r },
+        { q: tile.q, r: tile.r },
+        movementPlan.units,
+        ActionType.MOVE,
+      );
+      if (!plan.ok) {
+        pushToast({
+          title: 'Pathfinding Error',
+          description: plan.reason,
+          variant: ToastVariant.Error,
+        });
+        setTargetSelectMode(false);
+        setMovementPlan(null);
+      } else {
+        setMovementPlan((prev) => (prev ? { ...prev, target: tile } : null));
+        setTargetSelectMode(false);
+      }
+    },
+    [movementPlan, pushToast, region],
   );
 
   const handleToggleUnit = useCallback((id: string) => {
@@ -305,15 +367,87 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
 
   const isHomeTile = selectedTile ? homeTileKey === toTileKey(selectedTile) : false;
 
+  const handleConvoyConfirm = (convoy: Convoy, units: Unit[]) => {
+    const worldToPx = (ax: Axial) => axialToPx(ax.q, ax.r, CONFIG.microHexSizePx);
+
+    const onStep = (ax: Axial) => {
+      const { x, y } = worldToPx(ax);
+      if (unitMarkerRef.current) {
+        unitMarkerRef.current.style.transform = `translate(${x}px, ${y}px)`;
+        unitMarkerRef.current.style.opacity = '1';
+      }
+    };
+
+    const onState = (state: Convoy['state']) => {
+      console.log('Convoy state:', state);
+    };
+
+    const onDone = (success: boolean) => {
+      if (success && convoy.action === ActionType.COLONIZE) {
+        useMapStore
+          .getState()
+          .setSettlement(convoy.regionId, `${convoy.target.q},${convoy.target.r}`, {
+            playerId: convoy.playerId,
+            icon: 'OUTPOST',
+          });
+      }
+      if (unitMarkerRef.current) {
+        unitMarkerRef.current.style.opacity = '0';
+      }
+      setMovementPlan(null);
+    };
+
+    runConvoy(convoy, units, worldToPx, onStep, onState, onDone);
+  };
+
   return (
-    <section className="h-[calc(100dvh-56px)] grid grid-rows-[minmax(420px,1fr)_auto_minmax(200px,1fr)] gap-3 p-4">
-      <div ref={containerRef} className="relative rounded-2xl border border-slate-700/60 bg-slate-900/60 shadow-inner">
+    <>
+      {movementPlan && !movementPlan.target && (
+        <UnitSelectionModal
+          units={movementPlan.units}
+          onClose={() => setMovementPlan(null)}
+          onUnitsSelected={(units) => {
+            setMovementPlan((prev) => (prev ? { ...prev, units } : null));
+            setTargetSelectMode(true);
+          }}
+        />
+      )}
+      {movementPlan && movementPlan.target && (
+        <ConvoyActionModal
+          region={region}
+          start={movementPlan.origin}
+          target={movementPlan.target}
+          availableUnits={movementPlan.units}
+          onConfirm={handleConvoyConfirm}
+          onClose={() => setMovementPlan(null)}
+        />
+      )}
+      <section className="region-container-fade-in h-[calc(100dvh-56px)] grid grid-rows-[minmax(420px,1fr)_auto_minmax(200px,1fr)] gap-3 p-4">
+        <div ref={containerRef} className="relative rounded-2xl border border-slate-700/60 bg-slate-900/60 shadow-inner overflow-hidden">
+          <div
+            className="absolute inset-0 h-full w-full"
+          style={{ background: BIOME_STYLE[dominantBiome as keyof typeof BIOME_STYLE].backgroundGradient }}
+        />
         <canvas
           ref={canvasRef}
           className="absolute inset-0 h-full w-full"
           role="img"
           aria-label={`Region ${region.name}`}
           onPointerDown={handlePointerDown}
+        />
+        <div
+          ref={unitMarkerRef}
+          className="unit-marker"
+          style={{
+            position: 'absolute',
+            width: '20px',
+            height: '20px',
+            background: 'gold',
+            borderRadius: '50%',
+            pointerEvents: 'none',
+            opacity: 0,
+            transition: 'opacity 0.3s',
+          }}
         />
         <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-3">
           <div className="pointer-events-auto inline-flex items-center gap-2 rounded-full border border-slate-500/50 bg-slate-900/90 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.4em] text-slate-100 shadow-lg">
@@ -419,6 +553,7 @@ const RegionViewComponent: React.FC<RegionViewProps> = ({ region }) => {
         />
       </div>
     </section>
+    </>
   );
 };
 
