@@ -25,11 +25,13 @@ const RegionViewComponent: React.FC<{ region: Region }> = ({ region }) => {
     home,
     handleTileClick,
     selectedTileForPopup,
+    closeActionPopup,
   } = useMapStore((state) => ({
     backToMacro: state.backToMacro,
     home: state.home,
     handleTileClick: state.handleTileClick,
     selectedTileForPopup: state.selectedTileForPopup,
+    closeActionPopup: state.closeActionPopup,
   }));
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -128,7 +130,7 @@ const RegionViewComponent: React.FC<{ region: Region }> = ({ region }) => {
       </div>
       <canvas ref={canvasRef} className="h-full w-full" />
       <div onClick={(e) => e.stopPropagation()}>
-        <TileActionPopup />
+        {selectedTileForPopup && <TileActionPopup tile={selectedTileForPopup} onClose={closeActionPopup} />}
         <BuildMenu />
       </div>
     </div>
