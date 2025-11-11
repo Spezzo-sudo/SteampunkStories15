@@ -7,6 +7,7 @@ import type { Region, Tile } from '@/data/types';
 import { Button } from '@/components/ui/Button';
 import { TileActionPopup } from './popups/TileActionPopup';
 import { BuildMenu } from './popups/BuildMenu';
+import { shallow } from 'zustand/shallow';
 
 interface RenderEnv {
   ctx: CanvasRenderingContext2D;
@@ -26,13 +27,18 @@ const RegionViewComponent: React.FC<{ region: Region }> = ({ region }) => {
     handleTileClick,
     selectedTileForPopup,
     closeActionPopup,
-  } = useMapStore((state) => ({
-    backToMacro: state.backToMacro,
-    home: state.home,
-    handleTileClick: state.handleTileClick,
-    selectedTileForPopup: state.selectedTileForPopup,
-    closeActionPopup: state.closeActionPopup,
-  }));
+    closeBuildMenu,
+  } = useMapStore(
+    (state) => ({
+      backToMacro: state.backToMacro,
+      home: state.home,
+      handleTileClick: state.handleTileClick,
+      selectedTileForPopup: state.selectedTileForPopup,
+      closeActionPopup: state.closeActionPopup,
+      closeBuildMenu: state.closeBuildMenu,
+    }),
+    shallow,
+  );
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -131,7 +137,7 @@ const RegionViewComponent: React.FC<{ region: Region }> = ({ region }) => {
       <canvas ref={canvasRef} className="h-full w-full" />
       <div onClick={(e) => e.stopPropagation()}>
         {selectedTileForPopup && <TileActionPopup tile={selectedTileForPopup} onClose={closeActionPopup} />}
-        <BuildMenu />
+        <BuildMenu onClose={closeBuildMenu} />
       </div>
     </div>
   );

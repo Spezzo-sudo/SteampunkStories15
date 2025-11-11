@@ -92,6 +92,14 @@ export const observeRegionTiles = (
 
   return onSnapshot(ref, (snapshot) => {
     const tiles = snapshot.docs.map((doc) => doc.data());
+    // Sort tiles by coordinates for deterministic order before stringifying.
+    tiles.sort((a, b) => {
+      if (a.q !== b.q) {
+        return a.q - b.q;
+      }
+      return a.r - b.r;
+    });
+
     const json = JSON.stringify(tiles);
     if (json !== lastResult) {
       lastResult = json;
@@ -116,6 +124,8 @@ export const observeUnits = (
 
   return onSnapshot(q, (snapshot) => {
     const mapped = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as Unit[];
+    // Sort units by ID for deterministic order.
+    mapped.sort((a, b) => a.id.localeCompare(b.id));
     const json = JSON.stringify(mapped);
     if (json !== lastResult) {
       lastResult = json;
@@ -140,6 +150,8 @@ export const observeConvoys = (
 
   return onSnapshot(q, (snapshot) => {
     const convoys = snapshot.docs.map((doc) => doc.data());
+    // Sort convoys by ID for deterministic order.
+    convoys.sort((a, b) => a.id.localeCompare(b.id));
     const json = JSON.stringify(convoys);
     if (json !== lastResult) {
       lastResult = json;
