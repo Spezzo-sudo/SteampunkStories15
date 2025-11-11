@@ -4,6 +4,7 @@ import { drawMacro, fitMacroView } from '@/lib/hexgrid/macroWorld';
 import { resizeCanvas, type Camera } from '@/lib/hexgrid/viewport';
 import { useMapStore } from '@/store/mapStore';
 import { regionAxToPx } from '@/lib/hexgrid/macroWorld';
+import type { Region } from '@/data/types';
 
 interface RenderEnv {
   ctx: CanvasRenderingContext2D;
@@ -92,7 +93,7 @@ const MacroMapComponent: React.FC = () => {
     return () => window.cancelAnimationFrame(raf);
   }, []);
 
-  const getRegionFromMouseEvent = (evt: React.MouseEvent<HTMLDivElement>) => {
+  const getRegionFromMouseEvent = (evt: React.MouseEvent<HTMLDivElement>): Region | undefined => {
     if (!world?.regions) {
       return undefined;
     }
@@ -105,34 +106,34 @@ const MacroMapComponent: React.FC = () => {
     const worldX = (evt.clientX - rect.left - cam.tx) / cam.scale;
     const worldY = (evt.clientY - rect.top - cam.ty) / cam.scale;
     
-    let closest = { dist: Infinity, id: '' };
+    let closest: { dist: number, region: Region | undefined } = { dist: Infinity, region: undefined };
     for (const region of world.regions) {
-        const center = regionAxToPx(region.RQ, region.RR, CONFIG.macroHexRadiusPx)
-        const dist = Math.hypot(center.x - worldX, center.y - worldY);
-        if (dist < closest.dist) {
-            closest = { dist, id: region.id };
-        }
+      const center = regionAxToPx(region.RQ, region.RR, CONFIG.macroHexRadiusPx)
+      const dist = Math.hypot(center.x - worldX, center.y - worldY);
+      if (dist < closest.dist) {
+        closest = { dist, region };
+      }
     }
     
-    if (closest.dist < CONFIG.macroHexRadiusPx * 0.9) {
-        return closest.id;
+    if (closest.region && closest.dist < CONFIG.macroHexRadiusPx * 0.9) {
+      return closest.region;
     }
     return undefined;
   };
 
   const handleMouseMove = (evt: React.MouseEvent<HTMLDivElement>) => {
-    const regionId = getRegionFromMouseEvent(evt);
-    setHoveredRegion(regionId);
+    const region = getRegionFromMouseEvent(evt);
+    setHoveredRegion(region ?? null);
   };
 
   const handleMouseLeave = () => {
-    setHoveredRegion(undefined);
+    setHoveredRegion(null);
   };
 
   const handleClick = (evt: React.MouseEvent<HTMLDivElement>) => {
-    const regionId = getRegionFromMouseEvent(evt);
-    if (regionId) {
-        selectRegion(regionId);
+    const region = getRegionFromMouseEvent(evt);
+    if (region) {
+      selectRegion(region);
     }
   };
 

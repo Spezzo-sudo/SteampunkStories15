@@ -1,3 +1,4 @@
+
 import { create } from 'zustand';
 import type { Region, Tile, HomeSelection } from '@/data/types';
 import { immer } from 'zustand/middleware/immer';
@@ -26,6 +27,7 @@ interface MapState {
 interface MapActions {
   init: (home: HomeSelection) => void;
   loadWorld: () => Promise<void>;
+  loadRegion: () => Promise<void>;
   setWorldId: (worldId: string) => void;
   setHoveredRegion: (region: Region | null) => void;
   handleTileClick: (tile: Tile) => void;
@@ -72,6 +74,15 @@ export const useMapStore = create(immer<MapState & MapActions>((set, get) => ({
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
       set({ worldError: errorMessage, loadingWorld: false });
     }
+  },
+
+  loadRegion: async () => {
+    const { worldId, selectedRegionId } = get();
+    if (!worldId || !selectedRegionId) {
+      return;
+    }
+    const region = await fetchRegion(worldId, selectedRegionId);
+    set({ region });
   },
 
   setWorldId: (worldId) => {
@@ -141,12 +152,14 @@ export const useMapStore = create(immer<MapState & MapActions>((set, get) => ({
   },
 
   selectRegion: async (region) => {
+    const worldId = get().worldId;
+    // Guard against missing IDs before proceeding.
+    if (!worldId || !region.id) {
+      console.error('selectRegion called with invalid world or region ID', { worldId, regionId: region.id });
+      return;
+    }
+
     if (get().selectedRegionId !== region.id) {
-      const worldId = get().worldId;
-      if (!worldId) {
-        console.error('World ID not set');
-        return;
-      }
       const fullRegion = await fetchRegion(worldId, region.id);
       set({
         view: 'micro',

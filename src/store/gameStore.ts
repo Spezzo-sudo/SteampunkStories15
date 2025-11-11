@@ -29,6 +29,7 @@ import {
 } from '@/lib/progression';
 import { computeQueueSlotTiming, hasQueueCapacity, partitionBuildQueue } from '@/lib/buildQueue';
 import { ToastVariant, useUiStore } from '@/store/uiStore';
+import { useMapStore } from '@/store/mapStore';
 
 interface GameState {
   resources: Resources;
@@ -177,6 +178,7 @@ export const useGameStore = create<GameState & GameActions>()(
     },
 
     gameTick: () => {
+      useMapStore.getState().loadRegion();
       const completionToasts: ToastPayload[] = [];
       set((state) => {
         const now = Date.now();

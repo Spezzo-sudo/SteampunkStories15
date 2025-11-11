@@ -1,22 +1,30 @@
-import { CONFIG } from '@/config/mapConfig';
-import type { World, Region } from '@/data/types';
-import { ensureRegionCentroid } from '@/lib/hexgrid/microRegion';
-import { makeWorld } from '@/lib/hexgrid/macroWorld';
+
+import { collection, getDocs } from 'firebase/firestore';
+import { db } from './firebaseConfig'; // Assuming you have a firebaseConfig.ts
+import type { Region } from '@/data/types';
+
+const WORLD_ID = 'playtest-world';
 
 /**
- * Bootstrap the world layout from the deterministic generator.
- */
-export const bootstrapWorld = async (worldId: string): Promise<World> => {
-  const world = makeWorld();
-  world.regions.forEach((region) => ensureRegionCentroid(region, CONFIG.microHexSizePx));
-  return world;
-};
-
-/**
- * Lists all regions in the world.
+ * Lists all regions in the world by fetching them from Firestore.
  * @returns An array of regions.
  */
 export const listRegions = async (): Promise<Region[]> => {
-  const world = await bootstrapWorld('__dummy_id__');
-  return world.regions;
-}
+  const regionsCol = collection(db, 'worlds', WORLD_ID, 'regions');
+  const regionSnapshot = await getDocs(regionsCol);
+  
+  if (regionSnapshot.empty) {
+    console.warn(`No regions found for world '${WORLD_ID}'. Falling back to an empty array.`);
+    return [];
+  }
+
+  const regions: Region[] = regionSnapshot.docs.map(doc => {
+    const data = doc.data();
+    return {
+      ...data,
+      id: doc.id, // This is the crucial fix!
+    } as Region;
+  });
+
+  return regions;
+};
