@@ -22,9 +22,9 @@ export default function GalaxyView(): React.ReactElement {
   const didLoadWorld = useRef(false);
 
   // --- Zustand Selectors ---
-  const mode = useMapStore((state) => state.mode);
+  const view = useMapStore((state) => state.view);
   const world = useMapStore((state) => state.world);
-  const activeRegion = useMapStore((state) => state.activeRegion);
+  const region = useMapStore((state) => state.region);
   const loadingWorld = useMapStore((state) => state.loadingWorld);
   const worldError = useMapStore((state) => state.worldError);
 
@@ -52,14 +52,14 @@ export default function GalaxyView(): React.ReactElement {
   }
 
   if (profile && !profile.hasPlacedHome) {
-    if (mode === 'micro' && activeRegion) {
+    if (view === 'micro' && region) {
       return (
         <section className="map-h flex flex-col p-2 sm:p-4">
           <div className="absolute left-1/2 top-6 z-10 -translate-x-1/2 rounded-md bg-slate-900/80 px-4 py-2 text-white shadow-lg">
             Wähle ein Feld, um deine Heimatbasis zu errichten.
           </div>
           <div className="relative flex-1 overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-950/70 shadow-inner">
-            <RegionView region={activeRegion} />
+            <RegionView region={region} />
           </div>
         </section>
       );
@@ -77,11 +77,11 @@ export default function GalaxyView(): React.ReactElement {
     );
   }
 
-  if (mode === 'micro' && activeRegion) {
+  if (view === 'micro' && region) {
     return (
       <section className="map-h flex flex-col p-2 sm:p-4">
         <div className="relative flex-1 overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-950/70 shadow-inner">
-          <RegionView region={activeRegion} />
+          <RegionView region={region} />
         </div>
       </section>
     );

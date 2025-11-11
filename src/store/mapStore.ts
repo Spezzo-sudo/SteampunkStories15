@@ -1,10 +1,19 @@
 import { create } from 'zustand';
 import type { Region, Tile, HomeSelection } from '@/data/types';
 import { immer } from 'zustand/middleware/immer';
+import { listRegions } from '@/services/firebase/gameApi';
+
+// The World object containing all static regions.
+export interface World {
+  regions: Region[];
+}
 
 interface MapState {
   view: 'macro' | 'micro';
   worldId: string | null;
+  world: World | null;
+  loadingWorld: boolean;
+  worldError: string | null;
   selectedRegionId: string | null;
   selectedTileForPopup: Tile | null;
   buildMenuTile: Tile | null;
@@ -14,6 +23,7 @@ interface MapState {
 
 interface MapActions {
   init: (home: HomeSelection) => void;
+  loadWorld: () => Promise<void>;
   setWorldId: (worldId: string) => void;
   handleTileClick: (tile: Tile) => void;
   openActionPopup: (tile: Tile) => void;
@@ -29,6 +39,9 @@ export const useMapStore = create(immer<MapState & MapActions>((set, get) => ({
   // State
   view: 'macro',
   worldId: null,
+  world: null,
+  loadingWorld: false,
+  worldError: null,
   selectedRegionId: null,
   selectedTileForPopup: null,
   buildMenuTile: null,
@@ -39,6 +52,21 @@ export const useMapStore = create(immer<MapState & MapActions>((set, get) => ({
   init: (home) => {
     if (JSON.stringify(home) !== JSON.stringify(get().home)) {
       set({ home });
+    }
+  },
+
+  loadWorld: async () => {
+    if (get().world || get().loadingWorld) return;
+
+    set({ loadingWorld: true, worldError: null });
+    try {
+      const regions = await listRegions();
+      const world = { regions };
+      set({ world: world, loadingWorld: false });
+    } catch (error) {
+      console.error('Failed to load world:', error);
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+      set({ worldError: errorMessage, loadingWorld: false });
     }
   },
 
