@@ -62,7 +62,8 @@ export const buildRegionHull = (region: RegionData, hexSize: number): {
   bounds: RegionBounds;
 } => {
   const cells = new Set(region.tiles.map((tile) => cellKey(tile.q, tile.r)));
-  const edges: Array<{ a: Point; b: Point }> = [];
+  type Edge = { a: Point; b: Point };
+  const edges: Edge[] = [];
 
   region.tiles.forEach((tile) => {
     const { x, y } = axialToPixel({ q: tile.q, r: tile.r }, hexSize);
@@ -78,37 +79,67 @@ export const buildRegionHull = (region: RegionData, hexSize: number): {
     });
   });
 
-  const loops: RegionLoop[] = [];
-  const unused = edges.slice();
-  while (unused.length) {
-    const loop: RegionLoop = { pts: [] };
-    const edge = unused.pop();
-    if (!edge) {
-      break;
+  const adjacency = new Map<string, Array<{ edge: Edge; to: Point }>>();
+  const register = (from: Point, to: Point, edge: Edge) => {
+    const key = pointKey(from);
+    const existing = adjacency.get(key);
+    if (existing) {
+      existing.push({ edge, to });
+      return;
     }
-    loop.pts.push(edge.a, edge.b);
-    let tail = edge.b;
-    while (loop.pts.length < 1024) {
-      const idx = unused.findIndex((candidate) => samePoint(candidate.a, tail) || samePoint(candidate.b, tail));
-      if (idx === -1) {
-        break;
+    adjacency.set(key, [{ edge, to }]);
+  };
+  edges.forEach((edge) => {
+    register(edge.a, edge.b, edge);
+    register(edge.b, edge.a, edge);
+  });
+
+  const removeEdge = (edge: Edge) => {
+    const drop = (point: Point) => {
+      const key = pointKey(point);
+      const entries = adjacency.get(key);
+      if (!entries) {
+        return;
       }
-      const next = unused.splice(idx, 1)[0];
-      if (samePoint(next.a, tail)) {
-        tail = next.b;
-        loop.pts.push(next.b);
-      } else {
-        tail = next.a;
-        loop.pts.push(next.a);
-      }
+      const remainingEntries = entries.filter((entry) => entry.edge !== edge);
+      adjacency.set(key, remainingEntries);
+    };
+    drop(edge.a);
+    drop(edge.b);
+  };
+
+  const loops: RegionLoop[] = [];
+  const used = new Set<Edge>();
+  let nextEdge = edges.find((edge) => !used.has(edge));
+  while (nextEdge) {
+    const loop: RegionLoop = { pts: [nextEdge.a, nextEdge.b] };
+    used.add(nextEdge);
+    removeEdge(nextEdge);
+    let tail = nextEdge.b;
+    const maxSteps = edges.length + 1;
+    for (let step = 0; step < maxSteps; step += 1) {
       if (samePoint(loop.pts[0], tail)) {
         break;
       }
+      const tailKey = pointKey(tail);
+      const candidates = adjacency.get(tailKey);
+      if (!candidates || candidates.length === 0) {
+        break;
+      }
+      const candidate = candidates.find((entry) => !used.has(entry.edge));
+      if (!candidate) {
+        break;
+      }
+      used.add(candidate.edge);
+      removeEdge(candidate.edge);
+      loop.pts.push(candidate.to);
+      tail = candidate.to;
     }
     if (!samePoint(loop.pts[0], loop.pts[loop.pts.length - 1])) {
       loop.pts.push(loop.pts[0]);
     }
     loops.push(loop);
+    nextEdge = edges.find((edge) => !used.has(edge));
   }
 
   if (loops.length === 0) {
