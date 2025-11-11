@@ -94,26 +94,46 @@ export const regionHull = (region: Region, size: number) => {
     }
   });
   const loops: Array<{ pts: Array<{ x: number; y: number }> }> = [];
-  const remaining = edges.slice();
   const eq = (p: { x: number; y: number }, q: { x: number; y: number }) => Math.abs(p.x - q.x) < 1e-6 && Math.abs(p.y - q.y) < 1e-6;
-  while (remaining.length) {
-    const loop = { pts: [] as Array<{ x: number; y: number }> };
-    let edge = remaining.pop();
-    if (!edge) {
-      break;
+  const pointKey = (p: { x: number; y: number }) => `${p.x.toFixed(4)},${p.y.toFixed(4)}`;
+  const adjacency = new Map<string, Array<{ edge: Edge; to: { x: number; y: number } }>>();
+  const register = (from: { x: number; y: number }, to: { x: number; y: number }, edge: Edge) => {
+    const keyPoint = pointKey(from);
+    const existing = adjacency.get(keyPoint);
+    if (existing) {
+      existing.push({ edge, to });
+      return;
     }
-    loop.pts.push(edge.a, edge.b);
-    while (true) {
-      const tail = loop.pts[loop.pts.length - 1];
-      const index = remaining.findIndex((candidate) => eq(candidate.a, tail) || eq(candidate.b, tail));
-      if (index < 0) {
+    adjacency.set(keyPoint, [{ edge, to }]);
+  };
+  edges.forEach((edge) => {
+    register(edge.a, edge.b, edge);
+    register(edge.b, edge.a, edge);
+  });
+
+  const used = new Set<Edge>();
+  const nextUnused = () => edges.find((candidate) => !used.has(candidate));
+  for (let start = nextUnused(); start; start = nextUnused()) {
+    const loop = { pts: [start.a, start.b] };
+    used.add(start);
+    let tail = start.b;
+    const maxSteps = edges.length + 1;
+    for (let step = 0; step < maxSteps; step += 1) {
+      if (eq(loop.pts[0], tail)) {
         break;
       }
-      const next = remaining.splice(index, 1)[0];
-      loop.pts.push(eq(next.a, tail) ? next.b : next.a);
-      if (eq(loop.pts[0], loop.pts[loop.pts.length - 1])) {
+      const tailKey = pointKey(tail);
+      const candidates = adjacency.get(tailKey);
+      if (!candidates || candidates.length === 0) {
         break;
       }
+      const candidate = candidates.find((entry) => !used.has(entry.edge));
+      if (!candidate) {
+        break;
+      }
+      used.add(candidate.edge);
+      loop.pts.push(candidate.to);
+      tail = candidate.to;
     }
     if (!eq(loop.pts[0], loop.pts[loop.pts.length - 1])) {
       loop.pts.push(loop.pts[0]);
