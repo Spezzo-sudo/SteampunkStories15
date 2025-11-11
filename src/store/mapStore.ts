@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import type { Region, Tile, HomeSelection } from '@/data/types';
 import { immer } from 'zustand/middleware/immer';
-import { listRegions } from '@/services/firebase/gameApi';
+import { listRegions } from '@/services/firebase/worldData';
+import { fetchRegion } from '@/services/firebase/gameApi';
 
 // The World object containing all static regions.
 export interface World {
@@ -15,6 +16,7 @@ interface MapState {
   loadingWorld: boolean;
   worldError: string | null;
   selectedRegionId: string | null;
+  hoveredRegion: Region | null;
   selectedTileForPopup: Tile | null;
   buildMenuTile: Tile | null;
   region: Region | null;
@@ -25,13 +27,14 @@ interface MapActions {
   init: (home: HomeSelection) => void;
   loadWorld: () => Promise<void>;
   setWorldId: (worldId: string) => void;
+  setHoveredRegion: (region: Region | null) => void;
   handleTileClick: (tile: Tile) => void;
   openActionPopup: (tile: Tile) => void;
   closeActionPopup: () => void;
   openBuildMenu: (tile: Tile) => void;
   closeBuildMenu: () => void;
   backToMacro: () => void;
-  selectRegion: (region: Region) => void;
+  selectRegion: (region: Region) => Promise<void>;
   setRegion: (region: Region) => void;
 }
 
@@ -43,6 +46,7 @@ export const useMapStore = create(immer<MapState & MapActions>((set, get) => ({
   loadingWorld: false,
   worldError: null,
   selectedRegionId: null,
+  hoveredRegion: null,
   selectedTileForPopup: null,
   buildMenuTile: null,
   region: null,
@@ -73,6 +77,12 @@ export const useMapStore = create(immer<MapState & MapActions>((set, get) => ({
   setWorldId: (worldId) => {
     if (worldId !== get().worldId) {
       set({ worldId });
+    }
+  },
+
+  setHoveredRegion: (region) => {
+    if (get().hoveredRegion?.id !== region?.id) {
+      set({ hoveredRegion: region });
     }
   },
 
@@ -130,12 +140,18 @@ export const useMapStore = create(immer<MapState & MapActions>((set, get) => ({
     }
   },
 
-  selectRegion: (region) => {
+  selectRegion: async (region) => {
     if (get().selectedRegionId !== region.id) {
+      const worldId = get().worldId;
+      if (!worldId) {
+        console.error('World ID not set');
+        return;
+      }
+      const fullRegion = await fetchRegion(worldId, region.id);
       set({
         view: 'micro',
         selectedRegionId: region.id,
-        region: region,
+        region: fullRegion,
         selectedTileForPopup: null,
         buildMenuTile: null,
       });

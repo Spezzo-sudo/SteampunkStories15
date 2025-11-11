@@ -1,8 +1,13 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
+import * as express from 'express';
+import * as cors from 'cors';
 
 admin.initializeApp();
 const db = admin.firestore();
+
+const app = express();
+app.use(cors({ origin: true }));
 
 interface Axial {
   q: number;
@@ -152,39 +157,45 @@ interface CreateConvoyInput {
   action: string;
 }
 
-/**
- * Callable function that validates and creates convoy missions in Firestore.
- */
-export const createConvoy = functions.https.onCall(async (data: CreateConvoyInput, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'Login erforderlich.');
+app.post('/createConvoy', async (req, res) => {
+  const data: CreateConvoyInput = req.body;
+  const context = { auth: { uid: req.header('uid') } };
+
+  if (!context.auth.uid) {
+    res.status(401).send({ error: 'Login erforderlich.' });
+    return;
   }
   const ownerId = context.auth.uid;
   const { worldId, regionId, origin, target, unitIds, action } = data;
   if (!worldId || !regionId || !origin || !target || !Array.isArray(unitIds)) {
-    throw new functions.https.HttpsError('invalid-argument', 'Eingaben unvollständig.');
+    res.status(400).send({ error: 'Eingaben unvollständig.' });
+    return;
   }
 
   const tiles = await fetchTiles(worldId, regionId);
   const unitsSnap = await fetchUnits(worldId, unitIds);
   if (unitsSnap.length !== unitIds.length) {
-    throw new functions.https.HttpsError('failed-precondition', 'Einheiten konnten nicht geladen werden.');
+    res.status(400).send({ error: 'Einheiten konnten nicht geladen werden.' });
+    return;
   }
   const units = unitsSnap.map((snap) => ({ id: snap.id, ...snap.data() }));
   if (units.some((unit) => unit.ownerId !== ownerId)) {
-    throw new functions.https.HttpsError('permission-denied', 'Fremde Einheiten dürfen nicht verwendet werden.');
+    res.status(403).send({ error: 'Fremde Einheiten dürfen nicht verwendet werden.' });
+    return;
   }
 
   const path = aStar(origin, target, tiles);
   if (!path) {
-    throw new functions.https.HttpsError('failed-precondition', 'Kein Pfad gefunden.');
+    res.status(400).send({ error: 'Kein Pfad gefunden.' });
+    return;
   }
 
   const roundTrip = action !== 'COLONIZE' && action !== 'MOVE';
   const cost = pathCost(path, tiles, units, roundTrip);
   const capacity = units.reduce((sum, unit) => sum + Number(unit.pressureTankMax ?? unit.pressureCapacity ?? 0), 0);
   if (!Number.isFinite(cost) || cost > capacity) {
-    throw new functions.https.HttpsError('failed-precondition', 'Druckkapazität reicht nicht aus.');
+    res.status(400).send({ error: 'Druckkapazität reicht nicht aus.' });
+    return;
   }
 
   const eta = Date.now() + etaMs(path.length - 1, units, roundTrip);
@@ -204,7 +215,7 @@ export const createConvoy = functions.https.onCall(async (data: CreateConvoyInpu
     createdAt: Date.now(),
   });
 
-  return { convoyId: convoyDoc.id, accepted: true };
+  res.send({ convoyId: convoyDoc.id, accepted: true });
 });
 
 const advanceColonization = async (
@@ -228,6 +239,8 @@ const advanceColonization = async (
 
 const returnEta = (convoy: admin.firestore.DocumentData) =>
   Date.now() + etaMs((convoy.path?.length ?? 1) - 1, [], false);
+
+export const api = functions.https.onRequest(app);
 
 /**
  * Scheduled job that progresses convoy states once their ETA is reached.
