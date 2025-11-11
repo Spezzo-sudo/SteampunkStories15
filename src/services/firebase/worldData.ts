@@ -1,6 +1,5 @@
-
 import { collection, getDocs } from 'firebase/firestore';
-import { db } from './firebaseConfig'; // Assuming you have a firebaseConfig.ts
+import { db } from './config'; // Corrected import path
 import type { Region } from '@/data/types';
 
 const WORLD_ID = 'playtest-world';
