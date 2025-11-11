@@ -66,18 +66,22 @@ interface ToastPayload {
   variant: ToastVariant;
 }
 
+const initialState: GameState = {
+  resources: { ...INITIAL_RESOURCES },
+  storage: { ...INITIAL_STORAGE },
+  kesseldruck: { ...createInitialKesseldruck() },
+  buildings: { ...INITIAL_BUILDING_LEVELS },
+  research: { ...INITIAL_RESEARCH_LEVELS },
+  activeView: View.Uebersicht,
+  buildQueue: [],
+};
+
 /**
  * Central Zustand store that manages the client-side simulation and progression state.
  */
 export const useGameStore = create<GameState & GameActions>()(
   immer((set, get) => ({
-    resources: { ...INITIAL_RESOURCES },
-    storage: { ...INITIAL_STORAGE },
-    kesseldruck: { ...createInitialKesseldruck() },
-    buildings: { ...INITIAL_BUILDING_LEVELS },
-    research: { ...INITIAL_RESEARCH_LEVELS },
-    activeView: View.Uebersicht,
-    buildQueue: [],
+    ...initialState,
 
     setView: (view) => set({ activeView: view }),
 

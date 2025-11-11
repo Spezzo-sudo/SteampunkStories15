@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { BUILDINGS } from '@/constants';
 import GameCard from '@/components/ui/GameCard';
+import { Building } from '@/types';
 
 /**
  * Übersicht aller ausbaubaren Gebäude inklusive Upgrade-Kosten und Bauzeit.
@@ -13,6 +14,13 @@ const BuildingsView: React.FC = () => {
   const getUpgradeCost = useGameStore((state) => state.getUpgradeCost);
   const getBuildTime = useGameStore((state) => state.getBuildTime);
   const startUpgrade = useGameStore((state) => state.startUpgrade);
+
+  const handleUpgrade = useCallback(
+    (building: Building) => {
+      startUpgrade(building);
+    },
+    [startUpgrade],
+  );
 
   return (
     <section className="space-y-8 pb-16">
@@ -45,7 +53,7 @@ const BuildingsView: React.FC = () => {
               upgradeCost={costForNextUpgrade}
               buildTime={buildTime}
               canAfford={affordable}
-              onUpgrade={() => startUpgrade(building)}
+              onUpgrade={() => handleUpgrade(building)}
               isUpgrading={isUpgrading}
               queueLength={buildQueue.length}
             />

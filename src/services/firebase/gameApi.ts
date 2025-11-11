@@ -11,7 +11,7 @@ import {
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import type { Unsubscribe } from 'firebase/auth';
 import { getDb } from './db';
-import { ensureFirebaseApp } from './initFirebase';
+import { getFirebaseAuth } from '../firebase';
 import type { Tile, HomeSelection } from '@/data/types';
 import type { Convoy, Unit } from '@/types/convoy';
 
@@ -86,13 +86,17 @@ export const observeRegionTiles = (
   onChange: (tiles: Tile[]) => void,
 ): Unsubscribe => {
   const db = getDb();
-  if (!db) {
-    onChange([]);
-    return () => undefined;
-  }
   const ref = collection(db, 'worlds', worldId, 'regions', regionId, 'tiles').withConverter(tileConverter);
+
+  let lastResult: string | undefined;
+
   return onSnapshot(ref, (snapshot) => {
-    onChange(snapshot.docs.map((doc) => doc.data()));
+    const tiles = snapshot.docs.map((doc) => doc.data());
+    const json = JSON.stringify(tiles);
+    if (json !== lastResult) {
+      lastResult = json;
+      onChange(tiles);
+    }
   });
 };
 
@@ -105,15 +109,18 @@ export const observeUnits = (
   onChange: (units: Unit[]) => void,
 ): Unsubscribe => {
   const db = getDb();
-  if (!db) {
-    onChange([]);
-    return () => undefined;
-  }
   const ref = collection(db, 'worlds', worldId, 'units');
   const q = query(ref, where('ownerId', '==', ownerId));
+
+  let lastResult: string | undefined;
+
   return onSnapshot(q, (snapshot) => {
     const mapped = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })) as Unit[];
-    onChange(mapped);
+    const json = JSON.stringify(mapped);
+    if (json !== lastResult) {
+      lastResult = json;
+      onChange(mapped);
+    }
   });
 };
 
@@ -126,14 +133,18 @@ export const observeConvoys = (
   onChange: (convoys: ConvoyDoc[]) => void,
 ): Unsubscribe => {
   const db = getDb();
-  if (!db) {
-    onChange([]);
-    return () => undefined;
-  }
   const ref = collection(db, 'worlds', worldId, 'convoys').withConverter(convoyConverter);
   const q = query(ref, where('ownerId', '==', ownerId));
+
+  let lastResult: string | undefined;
+
   return onSnapshot(q, (snapshot) => {
-    onChange(snapshot.docs.map((doc) => doc.data()));
+    const convoys = snapshot.docs.map((doc) => doc.data());
+    const json = JSON.stringify(convoys);
+    if (json !== lastResult) {
+      lastResult = json;
+      onChange(convoys);
+    }
   });
 };
 
@@ -148,11 +159,11 @@ export const requestConvoy = async (payload: {
   unitIds: string[];
   action: Convoy['action'];
 }): Promise<{ convoyId: string }> => {
-  const app = ensureFirebaseApp();
-  if (!app) {
+  const auth = getFirebaseAuth();
+  if (!auth) {
     throw new Error('Firebase ist nicht konfiguriert.');
   }
-  const functions = getFunctions(app);
+  const functions = getFunctions(auth.app);
   const callable = httpsCallable(functions, 'createConvoy');
   const result = await callable(payload);
   const data = result.data as { convoyId: string };
@@ -167,9 +178,6 @@ export const requestConvoy = async (payload: {
  */
 export const setWorldHome = async (worldId: string, home: HomeSelection): Promise<void> => {
   const db = getDb();
-  if (!db) {
-    throw new Error('Datenbankverbindung nicht verfügbar.');
-  }
   const worldRef = doc(db, 'worlds', worldId);
   await updateDoc(worldRef, { home });
 };

@@ -1,5 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
-import { shallow } from 'zustand/shallow';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { MacroMap } from '@/components/galaxy/MacroMap';
 import { RegionView } from '@/components/galaxy/RegionView';
 import { useMapStore } from '@/store/mapStore';
@@ -20,44 +19,40 @@ const WelcomeMode: React.FC = () => (
 
 /** Main galaxy view orchestrating macro map rendering and micro region drilldowns. */
 export default function GalaxyView(): React.ReactElement {
-  const loadWorld = useMapStore((state) => state.loadWorld);
-  const { mode, world, activeRegion, loadingWorld, worldError } = useMapStore(
-    (state) => ({
-      mode: state.mode,
-      world: state.world,
-      activeRegion: state.activeRegion,
-      loadingWorld: state.loadingWorld,
-      worldError: state.worldError,
-    }),
-    shallow,
-  );
+  const didLoadWorld = useRef(false);
 
-  const {
-    user,
-    profile,
-    initializing: sessionLoading,
-    loadingProfile,
-  } = useSessionStore((state) => ({ ...state }));
+  // --- Zustand Selectors ---
+  const mode = useMapStore((state) => state.mode);
+  const world = useMapStore((state) => state.world);
+  const activeRegion = useMapStore((state) => state.activeRegion);
+  const loadingWorld = useMapStore((state) => state.loadingWorld);
+  const worldError = useMapStore((state) => state.worldError);
 
+  const userId = useSessionStore((state) => state.user?.uid);
+  const profile = useSessionStore((state) => state.profile);
+  const sessionLoading = useSessionStore((state) => state.initializing);
+  const loadingProfile = useSessionStore((state) => state.loadingProfile);
+
+  // --- Memoized Values ---
   const regionCount = useMemo(() => world?.regions.length ?? 0, [world]);
 
+  // --- Effects ---
   useEffect(() => {
-    // Load the world map only once the user is logged in and has a profile.
-    if (!user || !profile?.hasPlacedHome) {
+    // Guard to ensure world data is loaded only once.
+    if (!userId || didLoadWorld.current) {
       return;
     }
-    void loadWorld();
-  }, [loadWorld, user, profile?.hasPlacedHome]);
+    didLoadWorld.current = true;
+    useMapStore.getState().loadWorld();
+  }, [userId]);
 
-  // Handle loading and initial state.
+  // --- Render Logic ---
   if (sessionLoading || loadingProfile) {
     return <LoadingOverlay>Lade Sitzung...</LoadingOverlay>;
   }
 
-  // Render a welcome screen until the user has placed their first base.
   if (profile && !profile.hasPlacedHome) {
     if (mode === 'micro' && activeRegion) {
-      // Player is in micro view, ready to pick a tile.
       return (
         <section className="map-h flex flex-col p-2 sm:p-4">
           <div className="absolute left-1/2 top-6 z-10 -translate-x-1/2 rounded-md bg-slate-900/80 px-4 py-2 text-white shadow-lg">
@@ -70,7 +65,6 @@ export default function GalaxyView(): React.ReactElement {
       );
     }
 
-    // Player is in macro view, needs to select a region first.
     return (
       <section className="map-h flex flex-col gap-4 p-4">
         <header className="flex items-center justify-center">

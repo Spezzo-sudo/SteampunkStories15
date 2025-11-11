@@ -1,6 +1,6 @@
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut as firebaseSignOut, type User } from 'firebase/auth';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut as firebaseSignOut, type User } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
-import { ensureFirebaseApp } from './initFirebase';
+import { getFirebaseAuth } from '../firebase';
 
 /** Local development stub user when Firebase config is absent. */
 let mockUser: User | null = null;
@@ -9,12 +9,12 @@ let mockUser: User | null = null;
  * Subscribes to Firebase authentication state changes.
  */
 export const observeAuth = (onChange: (user: User | null) => void): (() => void) => {
-  const app = ensureFirebaseApp();
-  if (!app) {
+  const auth = getFirebaseAuth();
+  if (!auth) {
+    // If firebase is not configured, we can use a mock user for offline development.
     onChange(mockUser);
     return () => undefined;
   }
-  const auth = getAuth(app);
   return onAuthStateChanged(auth, onChange);
 };
 
@@ -25,38 +25,15 @@ const ensureAdminAccount = async (username: string, password: string, authUser: 
   if (authUser) {
     return;
   }
-  const app = ensureFirebaseApp();
-  if (!app) {
+  const auth = getFirebaseAuth();
+  if (!auth) {
     mockUser = {
       uid: 'mock-admin',
       email: usernameToEmail(username),
       displayName: 'Administrator',
-      emailVerified: true,
-      isAnonymous: false,
-      metadata: {} as User['metadata'],
-      providerData: [],
-      refreshToken: '',
-      tenantId: null,
-      delete: async () => undefined,
-      getIdToken: async () => 'mock-token',
-      getIdTokenResult: async () => ({
-        token: 'mock-token',
-        authTime: Date.now().toString(),
-        issuedAtTime: Date.now().toString(),
-        expirationTime: Date.now().toString(),
-        signInProvider: 'password',
-        signInSecondFactor: null,
-        claims: {},
-      }),
-      reload: async () => undefined,
-      toJSON: () => ({}),
-      phoneNumber: null,
-      photoURL: null,
-      providerId: 'password',
-    } as unknown as User;
+    } as User;
     return;
   }
-  const auth = getAuth(app);
   const email = usernameToEmail(username);
   try {
     await signInWithEmailAndPassword(auth, email, password);
@@ -74,41 +51,14 @@ const ensureAdminAccount = async (username: string, password: string, authUser: 
  * Attempts to authenticate the provided credentials, auto-provisioning an admin account if required.
  */
 export const signIn = async (username: string, password: string): Promise<void> => {
-  const app = ensureFirebaseApp();
-  if (!app) {
+  const auth = getFirebaseAuth();
+  if (!auth) {
     if (username === 'admin' && password === 'admin1') {
-      mockUser = {
-        uid: 'mock-admin',
-        email: usernameToEmail(username),
-        displayName: 'Administrator',
-        emailVerified: true,
-        isAnonymous: false,
-        metadata: {} as User['metadata'],
-        providerData: [],
-        refreshToken: '',
-        tenantId: null,
-        delete: async () => undefined,
-        getIdToken: async () => 'mock-token',
-        getIdTokenResult: async () => ({
-          token: 'mock-token',
-          authTime: Date.now().toString(),
-          issuedAtTime: Date.now().toString(),
-          expirationTime: Date.now().toString(),
-          signInProvider: 'password',
-          signInSecondFactor: null,
-          claims: {},
-        }),
-        reload: async () => undefined,
-        toJSON: () => ({}),
-        phoneNumber: null,
-        photoURL: null,
-        providerId: 'password',
-      } as unknown as User;
+      mockUser = { uid: 'mock-admin', email: usernameToEmail(username), displayName: 'Administrator' } as User;
       return;
     }
     throw new Error('Ungültige Zugangsdaten im Offline-Modus.');
   }
-  const auth = getAuth(app);
   const email = usernameToEmail(username);
   try {
     await signInWithEmailAndPassword(auth, email, password);
@@ -126,12 +76,11 @@ export const signIn = async (username: string, password: string): Promise<void> 
  * Signs the current user out of the Firebase session.
  */
 export const signOut = async (): Promise<void> => {
-  const app = ensureFirebaseApp();
-  if (!app) {
+  const auth = getFirebaseAuth();
+  if (!auth) {
     mockUser = null;
     return;
   }
-  const auth = getAuth(app);
   await firebaseSignOut(auth);
 };
 
@@ -139,11 +88,10 @@ export const signOut = async (): Promise<void> => {
  * Ensures the default admin account exists by attempting a silent sign-in with fallback provisioning.
  */
 export const ensureDefaultAdmin = async (username: string, password: string): Promise<void> => {
-  const app = ensureFirebaseApp();
-  if (!app) {
+  const auth = getFirebaseAuth();
+  if (!auth) {
     return;
   }
-  const auth = getAuth(app);
   try {
     await ensureAdminAccount(username, password, auth.currentUser);
   } catch (error) {

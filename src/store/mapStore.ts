@@ -46,6 +46,7 @@ export interface MapStore {
   handleTileClick: (tile: Tile) => void;
   canBuild: () => boolean;
   setWorldId: (worldId: string) => void;
+  setActiveRegion: (region: Region) => void; // New action
 }
 
 export const useMapStore = create<MapStore>()(
@@ -73,8 +74,11 @@ export const useMapStore = create<MapStore>()(
       try {
         const world = await bootstrapWorld(effectiveWorldId);
         world.regions.forEach((region) => ensureRegionCentroid(region, CONFIG.microHexSizePx));
+
+        // Ensure home is hydrated immutably.
         const hydratedHome = world.home ? { ...world.home, setAt: world.home.setAt ?? Date.now() } : null;
         const nextWorld = hydratedHome ? { ...world, home: hydratedHome } : world;
+
         set((state) => {
           state.world = nextWorld;
           state.loadingWorld = false;
@@ -91,47 +95,55 @@ export const useMapStore = create<MapStore>()(
     },
 
     selectRegion: (regionId) => {
-      get().regionUnsubscribe?.();
-      const currentWorld = get().world;
-      if (!currentWorld) return;
-      let region = currentWorld.regions.find((entry) => entry.id === regionId);
+      const { activeRegion, world } = get();
+
+      // If the selected region is already active, do nothing to prevent re-render loops.
+      if (activeRegion?.id === regionId) {
+        return;
+      }
+
+      if (!world) return;
+      const region = world.regions.find((entry) => entry.id === regionId);
       if (!region) return;
 
-      if (!region.tiles || region.tiles.length === 0) {
-        const placeholderTiles = generateRegionTiles(region.id, region.allianceId);
-        region = { ...region, tiles: placeholderTiles };
-        const regionIndex = currentWorld.regions.findIndex((r) => r.id === regionId);
-        set((state) => {
-          if (state.world && regionIndex !== -1) {
-            state.world.regions[regionIndex] = region!;
-            state.world.selectedRegionId = regionId;
-          }
-        });
-      } else {
-        set((state) => {
-          if (state.world) state.world.selectedRegionId = regionId;
-        });
+      get().setActiveRegion(region);
+    },
+
+    setActiveRegion: (region) => {
+      get().regionUnsubscribe?.();
+
+      let nextRegion = { ...region };
+      if (!nextRegion.tiles || nextRegion.tiles.length === 0) {
+        const placeholderTiles = generateRegionTiles(nextRegion.id, nextRegion.allianceId);
+        nextRegion.tiles = placeholderTiles;
       }
 
       set((state) => {
+        if (state.world) {
+          const regionIndex = state.world.regions.findIndex((r) => r.id === nextRegion.id);
+          if (regionIndex !== -1) {
+            state.world.regions[regionIndex] = nextRegion;
+          }
+          state.world.selectedRegionId = nextRegion.id;
+        }
         state.mode = 'micro';
-        state.activeRegion = region!;
+        state.activeRegion = nextRegion;
         state.transportOrigin = null;
       });
 
       const { worldId } = get();
-      const unsubscribe = observeRegionTiles(worldId, regionId, (tiles) => {
+      const unsubscribe = observeRegionTiles(worldId, nextRegion.id, (tiles) => {
         if (!tiles.length) return;
         set((state) => {
           if (!state.world || !state.activeRegion) return;
-          const regionIndex = state.world.regions.findIndex((r) => r.id === regionId);
+          const regionIndex = state.world.regions.findIndex((r) => r.id === nextRegion.id);
           if (regionIndex === -1) return;
 
-          const nextRegion: Region = { ...state.activeRegion, tiles };
-          ensureRegionCentroid(nextRegion, CONFIG.microHexSizePx);
+          const updatedRegion: Region = { ...state.activeRegion, tiles };
+          ensureRegionCentroid(updatedRegion, CONFIG.microHexSizePx);
 
-          state.world.regions[regionIndex] = nextRegion;
-          state.activeRegion = nextRegion;
+          state.world.regions[regionIndex] = updatedRegion;
+          state.activeRegion = updatedRegion;
         });
       });
       set((state) => {
