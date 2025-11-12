@@ -5,7 +5,7 @@ export const DEFAULT_ADMIN_CREDENTIALS = {
   /** Username provisioned for the local administrator account. */
   username: 'admin',
   /** Password provisioned for the local administrator account. */
-  password: 'admin1',
+  password: 'admin',
 } as const;
 
 /**
