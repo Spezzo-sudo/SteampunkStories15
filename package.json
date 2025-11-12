@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext ts,tsx",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "setup:firestore": "tsx scripts/setupFirestore.ts"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",
@@ -44,6 +45,7 @@
     "postcss": "^8.5.6",
     "puppeteer": "^24.26.1",
     "tailwindcss": "^4.1.17",
+    "tsx": "^4.19.2",
     "typescript": "~5.8.2",
     "vite": "^5.3.3",
     "vitest": "^3.0.2"
