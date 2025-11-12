@@ -18,5 +18,5 @@ export const useGameTick = () => {
     }, TICK_INTERVAL);
 
     return () => clearInterval(intervalId);
-  }, []);
+  }, [advanceMissions, gameTick]);
 };

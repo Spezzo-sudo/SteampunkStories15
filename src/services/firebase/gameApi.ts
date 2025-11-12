@@ -1,6 +1,6 @@
-import { collection, getDocs, query, where } from 'firebase/firestore';
-import { db } from './config';
-import type { Region } from '@/data/types';
+import { collection, doc, getDoc, getDocs } from 'firebase/firestore';
+import { getDb } from './db';
+import type { Region, Tile } from '@/data/types';
 
 /**
  * Fetches a region and its tiles.
@@ -14,20 +14,34 @@ export const fetchRegion = async (worldId: string, regionId: string): Promise<Re
     return null;
   }
 
-  const regionRef = collection(db, 'worlds', worldId, 'regions');
-  const q = query(regionRef, where('id', '==', regionId));
-  const snapshot = await getDocs(q);
+  try {
+    const db = getDb();
+    const regionDocRef = doc(db, 'worlds', worldId, 'regions', regionId);
+    const regionSnapshot = await getDoc(regionDocRef);
 
-  if (snapshot.empty) {
-    return null;
+    if (!regionSnapshot.exists()) {
+      console.warn(`Region ${regionId} not found in world ${worldId}.`);
+      return null;
+    }
+
+    const regionData = regionSnapshot.data() as Partial<Region>;
+    const region: Region = {
+      ...regionData,
+      id: regionSnapshot.id,
+      tiles: regionData.tiles ?? [],
+    } as Region;
+
+    const tilesRef = collection(regionDocRef, 'tiles');
+    const tilesSnapshot = await getDocs(tilesRef);
+    region.tiles = tilesSnapshot.docs.map((tileDoc) => tileDoc.data() as Tile);
+
+    return region;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('Firebase has not been initialized')) {
+      console.warn('Firestore unavailable while fetching region; returning null.');
+      return null;
+    }
+    throw error;
   }
-
-  const regionDoc = snapshot.docs[0];
-  const region = { ...regionDoc.data(), id: regionDoc.id } as Region;
-
-  const tilesRef = collection(db, 'worlds', worldId, 'regions', regionId, 'tiles');
-  const tilesSnapshot = await getDocs(tilesRef);
-  region.tiles = tilesSnapshot.docs.map((doc) => doc.data());
-
-  return region;
 };

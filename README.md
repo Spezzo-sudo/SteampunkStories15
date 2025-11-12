@@ -97,7 +97,7 @@ Ohne Firebase-Konfiguration läuft der Client im Offline-Demomodus, unterstützt
 
 - Die Login-Maske verwendet Benutzername/Passwort. Der Benutzername wird intern zu `@steampunk.local` ergänzt, damit Firebase mit E-Mail/Passwort arbeiten kann.
 - Beim ersten Start versucht der Client automatisch, den Zugang `admin / admin` anzulegen (`ensureDefaultAdmin`). Das funktioniert nur, wenn im Firebase-Projekt "E-Mail/Passwort" aktiviert ist.
-- Ohne Firebase-Konfiguration akzeptiert der Client weiterhin `admin / admin` im Offline-Modus.
+- Ohne Firebase-Konfiguration akzeptiert der Client weiterhin `admin / admin1` im Offline-Modus.
 
 ### Firestore-Struktur
 

@@ -22,6 +22,7 @@ interface MissionActions {
   planMission: (payload: PlanMissionPayload) => void;
   setOriginPlanet: (planetId: string) => void;
   advanceMissions: (timestamp: number) => void;
+  syncOriginWithDirectory: () => void;
 }
 
 const resolvePlanet = (planetId: string) => {
@@ -37,7 +38,7 @@ const resolvePlanet = (planetId: string) => {
   return { planet, system };
 };
 
-const deriveInitialOrigin = () => {
+const deriveOriginFromDirectory = () => {
   const directory = useDirectoryStore.getState();
   for (const system of directory.systems) {
     for (const planet of system.planets) {
@@ -51,10 +52,8 @@ const deriveInitialOrigin = () => {
   if (fallbackSystem && fallbackPlanet) {
     return { planetId: fallbackPlanet.id, systemId: fallbackSystem.id };
   }
-  return { planetId: '', systemId: '' };
+  return null;
 };
-
-const initialOrigin = deriveInitialOrigin();
 
 /**
  * Zustand store that tracks client-side mission planning and resolves fleet travel timelines.
@@ -62,12 +61,30 @@ const initialOrigin = deriveInitialOrigin();
 export const useMissionStore = create<MissionState & MissionActions>()(
   immer((set, get) => ({
     missions: [],
-    originPlanetId: initialOrigin.planetId,
-    originSystemId: initialOrigin.systemId,
+    originPlanetId: '',
+    originSystemId: '',
 
     planMission: ({ targetPlanetId, missionType }) => {
       const directory = useDirectoryStore.getState();
+      if (!get().originPlanetId) {
+        const derived = deriveOriginFromDirectory();
+        if (derived) {
+          set((state) => {
+            state.originPlanetId = derived.planetId;
+            state.originSystemId = derived.systemId;
+          });
+        }
+      }
       const originContext = resolvePlanet(get().originPlanetId);
+      if (!originContext) {
+        const { pushToast } = useUiStore.getState();
+        pushToast({
+          title: 'Mission konnte nicht geplant werden',
+          description: 'Es wurde kein Heimatplanet gefunden. Bitte wähle eine Quelle.',
+          variant: ToastVariant.Warning,
+        });
+        return;
+      }
       const targetContext = resolvePlanet(targetPlanetId);
       if (!originContext || !targetContext) {
         const { pushToast } = useUiStore.getState();
@@ -185,5 +202,27 @@ export const useMissionStore = create<MissionState & MissionActions>()(
         });
       }
     },
+
+    syncOriginWithDirectory: () => {
+      const derived = deriveOriginFromDirectory();
+      set((state) => {
+        const nextPlanetId = derived?.planetId ?? '';
+        const nextSystemId = derived?.systemId ?? '';
+        if (state.originPlanetId === nextPlanetId && state.originSystemId === nextSystemId) {
+          return;
+        }
+        state.originPlanetId = nextPlanetId;
+        state.originSystemId = nextSystemId;
+      });
+    },
   })),
+);
+
+useMissionStore.getState().syncOriginWithDirectory();
+
+useDirectoryStore.subscribe(
+  (state) => ({ systems: state.systems, currentPlayerId: state.currentPlayerId }),
+  () => {
+    useMissionStore.getState().syncOriginWithDirectory();
+  },
 );

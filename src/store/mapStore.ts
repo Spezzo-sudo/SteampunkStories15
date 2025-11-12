@@ -1,13 +1,15 @@
-
 import { create } from 'zustand';
-import type { Region, Tile, HomeSelection } from '@/data/types';
 import { immer } from 'zustand/middleware/immer';
+import type { HomeSelection, Region, Tile } from '@/data/types';
 import { listRegions } from '@/services/firebase/worldData';
 import { fetchRegion } from '@/services/firebase/gameApi';
 
-// The World object containing all static regions.
 export interface World {
   regions: Region[];
+  selectedRegionId: string | null;
+  hoveredRegionId: string | null;
+  allianceFilterOn: boolean;
+  home: HomeSelection | null;
 }
 
 interface MapState {
@@ -16,8 +18,6 @@ interface MapState {
   world: World | null;
   loadingWorld: boolean;
   worldError: string | null;
-  selectedRegionId: string | null;
-  hoveredRegion: Region | null;
   selectedTileForPopup: Tile | null;
   buildMenuTile: Tile | null;
   region: Region | null;
@@ -38,142 +38,308 @@ interface MapActions {
   backToMacro: () => void;
   selectRegion: (region: Region) => Promise<void>;
   setRegion: (region: Region) => void;
+  toggleAllianceFilter: () => void;
 }
 
-export const useMapStore = create(immer<MapState & MapActions>((set, get) => ({
-  // State
-  view: 'macro',
-  worldId: null,
-  world: null,
-  loadingWorld: false,
-  worldError: null,
-  selectedRegionId: null,
-  hoveredRegion: null,
-  selectedTileForPopup: null,
-  buildMenuTile: null,
-  region: null,
-  home: null,
+const regionCache = new Map<string, Region | null>();
+const pendingRegionLoads = new Map<string, Promise<Region | null>>();
 
-  // Actions
-  init: (home) => {
-    if (JSON.stringify(home) !== JSON.stringify(get().home)) {
-      set({ home });
-    }
-  },
+const tilesEqual = (a: Tile | null, b: Tile | null) => !!a && !!b && a.q === b.q && a.r === b.r;
 
-  loadWorld: async () => {
-    if (get().world || get().loadingWorld) return;
+const ensureWorldShell = (state: MapState & MapActions) => {
+  if (!state.world) {
+    state.world = {
+      regions: [],
+      selectedRegionId: null,
+      hoveredRegionId: null,
+      allianceFilterOn: false,
+      home: state.home,
+    };
+  } else {
+    state.world.home = state.home;
+  }
+};
 
-    set({ loadingWorld: true, worldError: null });
-    try {
-      const regions = await listRegions();
-      const world = { regions };
-      set({ world: world, loadingWorld: false });
-    } catch (error) {
-      console.error('Failed to load world:', error);
-      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
-      set({ worldError: errorMessage, loadingWorld: false });
-    }
-  },
+/**
+ * Zustand store orchestrating macro and micro map state, including cached region lookups.
+ */
+export const useMapStore = create(
+  immer<MapState & MapActions>((set, get) => ({
+    view: 'macro',
+    worldId: null,
+    world: null,
+    loadingWorld: false,
+    worldError: null,
+    selectedTileForPopup: null,
+    buildMenuTile: null,
+    region: null,
+    home: null,
 
-  loadRegion: async () => {
-    const { worldId, selectedRegionId } = get();
-    if (!worldId || !selectedRegionId) {
-      return;
-    }
-    const region = await fetchRegion(worldId, selectedRegionId);
-    set({ region });
-  },
-
-  setWorldId: (worldId) => {
-    if (worldId !== get().worldId) {
-      set({ worldId });
-    }
-  },
-
-  setHoveredRegion: (region) => {
-    if (get().hoveredRegion?.id !== region?.id) {
-      set({ hoveredRegion: region });
-    }
-  },
-
-  handleTileClick: (tile) => {
-    if (get().buildMenuTile) return; // Don't do anything if build menu is open
-
-    if (get().selectedTileForPopup?.q === tile.q && get().selectedTileForPopup?.r === tile.r) {
-      // Clicked the same tile again, close the popup.
-      get().closeActionPopup();
-    } else {
-      // Clicked a new tile, open the popup for it.
-      get().openActionPopup(tile);
-    }
-  },
-
-  openActionPopup: (tile) => {
-    if (JSON.stringify(tile) !== JSON.stringify(get().selectedTileForPopup)) {
+    init: (home) => {
       set((state) => {
-        state.selectedTileForPopup = tile;
-        state.buildMenuTile = null; // Close build menu if it was open
+        const current = state.home;
+        if (current?.regionId === home.regionId && current?.tileKey === home.tileKey) {
+          return;
+        }
+        state.home = home;
+        if (state.world) {
+          state.world.home = home;
+        }
       });
-    }
-  },
+    },
 
-  closeActionPopup: () => {
-    if (get().selectedTileForPopup !== null) {
-      set({ selectedTileForPopup: null });
-    }
-  },
+    loadWorld: async () => {
+      const { worldId, loadingWorld } = get();
+      if (loadingWorld) {
+        return;
+      }
+      if (!worldId) {
+        set({ worldError: 'Keine Welt-ID verfügbar.' });
+        return;
+      }
+      set({ loadingWorld: true, worldError: null });
+      try {
+        const regions = await listRegions(worldId);
+        set((state) => {
+          const allianceFilterOn = state.world?.allianceFilterOn ?? false;
+          const selectedRegionId = state.world?.selectedRegionId ?? null;
+          const hoveredRegionId = state.world?.hoveredRegionId ?? null;
+          state.world = {
+            regions,
+            allianceFilterOn,
+            selectedRegionId,
+            hoveredRegionId,
+            home: state.home,
+          };
+          state.loadingWorld = false;
+        });
+      } catch (error) {
+        console.error('Failed to load world:', error);
+        const message =
+          error instanceof Error ? error.message : 'Regionen konnten nicht geladen werden.';
+        set({ worldError: message, loadingWorld: false, world: null });
+      }
+    },
 
-  openBuildMenu: (tile) => {
-    if (JSON.stringify(tile) !== JSON.stringify(get().buildMenuTile)) {
-      set((state) => {
-        state.buildMenuTile = tile;
-        state.selectedTileForPopup = null; // Close action popup
-      });
-    }
-  },
+    loadRegion: async () => {
+      const { worldId } = get();
+      const selectedRegionId = get().world?.selectedRegionId;
+      if (!worldId || !selectedRegionId) {
+        return;
+      }
 
-  closeBuildMenu: () => {
-    if (get().buildMenuTile !== null) {
-      set({ buildMenuTile: null });
-    }
-  },
+      const cached = regionCache.get(selectedRegionId);
+      if (cached !== undefined) {
+        if (cached && get().region !== cached) {
+          set({ region: cached });
+        }
+        if (cached === null && get().region !== null) {
+          set({ region: null });
+        }
+        return;
+      }
 
-  backToMacro: () => {
-    if (get().view !== 'macro') {
+      const pending = pendingRegionLoads.get(selectedRegionId);
+      if (pending) {
+        await pending;
+        return;
+      }
+
+      const loadPromise = (async () => {
+        try {
+          const region = await fetchRegion(worldId, selectedRegionId);
+          return region ?? null;
+        } catch (error) {
+          console.error('Failed to load region:', error);
+          return null;
+        }
+      })();
+
+      pendingRegionLoads.set(selectedRegionId, loadPromise);
+
+      const region = await loadPromise;
+      regionCache.set(selectedRegionId, region);
+      pendingRegionLoads.delete(selectedRegionId);
+
+      if (region) {
+        set({ region });
+      } else if (get().region !== null) {
+        set({ region: null });
+      }
+    },
+
+    setWorldId: (worldId) => {
+      if (worldId === get().worldId) {
+        return;
+      }
+      regionCache.clear();
+      pendingRegionLoads.clear();
       set({
+        worldId,
+        world: null,
+        worldError: null,
         view: 'macro',
-        selectedRegionId: null,
         region: null,
         selectedTileForPopup: null,
         buildMenuTile: null,
       });
-    }
-  },
+    },
 
-  selectRegion: async (region) => {
-    const worldId = get().worldId;
-    // Guard against missing IDs before proceeding.
-    if (!worldId || !region.id) {
-      console.error('selectRegion called with invalid world or region ID', { worldId, regionId: region.id });
-      return;
-    }
-
-    if (get().selectedRegionId !== region.id) {
-      const fullRegion = await fetchRegion(worldId, region.id);
-      set({
-        view: 'micro',
-        selectedRegionId: region.id,
-        region: fullRegion,
-        selectedTileForPopup: null,
-        buildMenuTile: null,
+    setHoveredRegion: (region) => {
+      set((state) => {
+        if (!state.world) {
+          return;
+        }
+        const nextId = region?.id ?? null;
+        if (state.world.hoveredRegionId === nextId) {
+          return;
+        }
+        state.world.hoveredRegionId = nextId;
       });
-    }
-  },
+    },
 
-  setRegion: (region) => {
-    if (JSON.stringify(region) !== JSON.stringify(get().region)) {
-      set({ region: region });
-    }
-  },
-})));
+    handleTileClick: (tile) => {
+      if (get().buildMenuTile) return;
+
+      if (tilesEqual(get().selectedTileForPopup, tile)) {
+        get().closeActionPopup();
+      } else {
+        get().openActionPopup(tile);
+      }
+    },
+
+    openActionPopup: (tile) => {
+      set((state) => {
+        if (tilesEqual(state.selectedTileForPopup, tile)) {
+          return;
+        }
+        state.selectedTileForPopup = tile;
+        state.buildMenuTile = null;
+      });
+    },
+
+    closeActionPopup: () => {
+      if (get().selectedTileForPopup !== null) {
+        set({ selectedTileForPopup: null });
+      }
+    },
+
+    openBuildMenu: (tile) => {
+      set((state) => {
+        if (tilesEqual(state.buildMenuTile, tile)) {
+          return;
+        }
+        state.buildMenuTile = tile;
+        state.selectedTileForPopup = null;
+      });
+    },
+
+    closeBuildMenu: () => {
+      if (get().buildMenuTile !== null) {
+        set({ buildMenuTile: null });
+      }
+    },
+
+    backToMacro: () => {
+      set((state) => {
+        if (state.view === 'macro') {
+          return;
+        }
+        state.view = 'macro';
+        state.region = null;
+        state.selectedTileForPopup = null;
+        state.buildMenuTile = null;
+        ensureWorldShell(state);
+        state.world!.selectedRegionId = null;
+      });
+    },
+
+    selectRegion: async (region) => {
+      const worldId = get().worldId;
+      if (!worldId || !region.id) {
+        console.error('selectRegion called with invalid world or region ID', {
+          worldId,
+          regionId: region.id,
+        });
+        return;
+      }
+
+      set((state) => {
+        state.view = 'micro';
+        state.selectedTileForPopup = null;
+        state.buildMenuTile = null;
+        ensureWorldShell(state);
+        state.world!.selectedRegionId = region.id;
+        state.world!.hoveredRegionId = region.id;
+      });
+
+      const cached = regionCache.get(region.id);
+      if (cached !== undefined) {
+        if (cached && get().region !== cached) {
+          set({ region: cached });
+        }
+        if (cached === null && get().region !== null) {
+          set({ region: null });
+        }
+        return;
+      }
+
+      const pending = pendingRegionLoads.get(region.id);
+      if (pending) {
+        const result = await pending;
+        if (result) {
+          set({ region: result });
+        } else if (get().region !== null) {
+          set({ region: null });
+        }
+        return;
+      }
+
+      try {
+        const fetchPromise = (async () => {
+          try {
+            const result = await fetchRegion(worldId, region.id);
+            return result ?? null;
+          } catch (error) {
+            console.error('Failed to fetch region:', error);
+            return null;
+          }
+        })();
+
+        pendingRegionLoads.set(region.id, fetchPromise);
+
+        const fullRegion = await fetchPromise;
+        regionCache.set(region.id, fullRegion);
+        pendingRegionLoads.delete(region.id);
+
+        if (fullRegion) {
+          set({ region: fullRegion });
+        } else if (get().region !== null) {
+          set({ region: null });
+        }
+      } catch (error) {
+        console.error('Failed to fetch region:', error);
+        regionCache.set(region.id, null);
+        pendingRegionLoads.delete(region.id);
+      }
+    },
+
+    setRegion: (region) => {
+      set((state) => {
+        state.region = region;
+        if (region?.id) {
+          regionCache.set(region.id, region);
+          ensureWorldShell(state);
+          state.world!.selectedRegionId = region.id;
+        }
+      });
+    },
+
+    toggleAllianceFilter: () => {
+      set((state) => {
+        ensureWorldShell(state);
+        state.world!.allianceFilterOn = !state.world!.allianceFilterOn;
+      });
+    },
+  })),
+);
