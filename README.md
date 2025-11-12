@@ -38,9 +38,9 @@ Ein Vite + React Prototyp für die Steampunk-Raiders Verwaltungssimulation.
    npm run test
    ```
 
-### Schnellstart-Skript f�r VS Code
+### Schnellstart-Skript für VS Code
 
-Im integrierten VS Code Terminal gen�gt:
+Im integrierten VS Code Terminal genügt:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\start-game.ps1
@@ -161,6 +161,3 @@ Diese Checkliste fasst alle Schritte zusammen, die notwendig sind, um neue Hex-T
 - Entwicklungsserver starten und zur Galaxy-Ansicht navigieren; prüfen, ob neue Hexes erscheinen und korrekt schattiert werden.
 - Auf Fehlermeldungen in der Browser-Konsole achten (z. B. 404 für fehlende Sprites oder Tilesets).
 - Vor dem Commit `npm run build` ausführen, damit TSC sicherstellt, dass alle Loader-Änderungen typisiert sind.
-
-### 6. Bekannter Wartungspunkt
-- Der Terrain-Loader importiert `TerrainTile` derzeit aus `@/components/galaxy/terrain/HexTerrain`. Sobald neue Assets integriert werden, den Import auf `@/components/galaxy/terrain/HexTerrainCanvas.types` korrigieren, um Typsicherheitswarnungen zu vermeiden.
