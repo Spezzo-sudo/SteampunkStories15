@@ -25,7 +25,7 @@ export interface ApiClient {
  * Resolves the base URL used for API calls, falling back to sensible defaults.
  */
 export const resolveApiBaseUrl = (override?: string): string => {
-  const raw = override ?? import.meta.env.VITE_API_BASE_URL ?? import.meta.env.API_BASE_URL ?? 'http://localhost:4000';
+  const raw = override ?? import.meta.env.VITE_API_BASE_URL ?? import.meta.env.API_BASE_URL ?? 'http://localhost:4321';
   return raw.replace(/\/$/, '');
 };
 
