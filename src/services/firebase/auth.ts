@@ -1,6 +1,7 @@
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut as firebaseSignOut, type User } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
 import { getFirebaseAuth } from '../firebase';
+import { DEFAULT_ADMIN_CREDENTIALS, getDefaultAdminEmail } from '@/config/authConfig';
 
 /** Local development stub user when Firebase config is absent. */
 let mockUser: User | null = null;
@@ -27,9 +28,11 @@ const ensureAdminAccount = async (username: string, password: string, authUser: 
   }
   const auth = getFirebaseAuth();
   if (!auth) {
+    const email =
+      username === DEFAULT_ADMIN_CREDENTIALS.username ? getDefaultAdminEmail() : usernameToEmail(username);
     mockUser = {
       uid: 'mock-admin',
-      email: usernameToEmail(username),
+      email,
       displayName: 'Administrator',
     } as User;
     return;
@@ -53,8 +56,8 @@ const ensureAdminAccount = async (username: string, password: string, authUser: 
 export const signIn = async (username: string, password: string): Promise<void> => {
   const auth = getFirebaseAuth();
   if (!auth) {
-    if (username === 'admin' && password === 'admin1') {
-      mockUser = { uid: 'mock-admin', email: usernameToEmail(username), displayName: 'Administrator' } as User;
+    if (username === DEFAULT_ADMIN_CREDENTIALS.username && password === DEFAULT_ADMIN_CREDENTIALS.password) {
+      mockUser = { uid: 'mock-admin', email: getDefaultAdminEmail(), displayName: 'Administrator' } as User;
       return;
     }
     throw new Error('Ungültige Zugangsdaten im Offline-Modus.');

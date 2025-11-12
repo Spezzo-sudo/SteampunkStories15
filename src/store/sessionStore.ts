@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { User } from 'firebase/auth';
 import { observeAuth, signIn, signOut, ensureDefaultAdmin } from '@/services/firebase/auth';
+import { DEFAULT_ADMIN_CREDENTIALS } from '@/config/authConfig';
 import { fetchOrCreatePlayerProfile } from '@/services/firebase/playerApi';
 import type { PlayerProfile } from '@/data/types';
 
@@ -37,7 +38,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const existing = get().authUnsubscribe;
     existing?.();
     set({ initializing: true, error: null, profile: null });
-    await ensureDefaultAdmin('admin', 'admin1');
+    await ensureDefaultAdmin(DEFAULT_ADMIN_CREDENTIALS.username, DEFAULT_ADMIN_CREDENTIALS.password);
     const unsubscribe = observeAuth(async (user) => {
       set({ user, initializing: false });
       if (user) {
