@@ -13,6 +13,38 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, doc, setDoc, writeBatch, getDocs } from 'firebase/firestore';
 import * as readline from 'readline';
+import * as fs from 'fs';
+import * as path from 'path';
+
+// .env Datei manuell laden (Node.js lädt sie nicht automatisch wie Vite)
+function loadEnv() {
+  const envPath = path.join(process.cwd(), '.env');
+
+  if (!fs.existsSync(envPath)) {
+    console.error('❌ Fehler: .env Datei nicht gefunden!');
+    console.error('Erstelle .env aus .env.example:');
+    console.error('  cp .env.example .env');
+    process.exit(1);
+  }
+
+  const envContent = fs.readFileSync(envPath, 'utf-8');
+  const lines = envContent.split('\n');
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    const [key, ...valueParts] = trimmed.split('=');
+    const value = valueParts.join('=').trim();
+
+    if (key && value) {
+      process.env[key] = value;
+    }
+  }
+}
+
+// Lade .env
+loadEnv();
 
 // Firebase Config aus .env lesen
 const firebaseConfig = {
