@@ -30,7 +30,7 @@ const LeftNav: React.FC = () => {
   const setView = useGameStore((state) => state.setView);
 
   return (
-    <nav className="hidden h-full w-64 shrink-0 flex-col gap-6 rounded-xl bg-black/30 p-5 shadow-lg backdrop-blur-xl lg:flex">
+    <nav className="hidden h-full w-64 shrink-0 flex-col gap-6 rounded-xl bg-black/30 p-5 shadow-lg backdrop-blur-xl md:flex">
       <div className="text-center">
         <h1 className="text-[clamp(1.5rem,2vw+1rem,2.6rem)] font-cinzel font-bold text-yellow-400">CHRONOS</h1>
         <p className="text-xs uppercase tracking-[0.3em] text-yellow-600">Industries</p>

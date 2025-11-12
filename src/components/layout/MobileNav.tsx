@@ -10,7 +10,7 @@ const MobileNav: React.FC = () => {
   const setView = useGameStore((state) => state.setView);
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-40 flex justify-center bg-black/80 py-2 shadow-2xl backdrop-blur-xl lg:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-40 flex justify-center bg-black/80 py-2 shadow-2xl backdrop-blur-xl md:hidden">
       <ul className="flex w-full max-w-md items-center justify-between px-4">
         {NAV_LINKS.map(({ view, label, icon }) => {
           const isActive = activeView === view;
