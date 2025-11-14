@@ -49,15 +49,29 @@ export default function GalaxyView(): React.ReactElement {
 
   // Load world after worldId is set
   useEffect(() => {
-    // Guard to ensure world data is loaded only once.
-    if (!userId || didLoadWorld.current) {
+    if (!userId) {
       return;
     }
+
     const mapStoreWorldId = useMapStore.getState().worldId;
     if (!mapStoreWorldId) {
       console.log('[GalaxyView] Waiting for worldId to be set...');
       return;
     }
+
+    // Check if world is already loaded
+    const currentWorld = useMapStore.getState().world;
+    if (currentWorld && currentWorld.regions.length > 0) {
+      console.log('[GalaxyView] World already loaded, skipping reload');
+      return;
+    }
+
+    // Guard to ensure world data is loaded only once
+    if (didLoadWorld.current) {
+      console.log('[GalaxyView] World load already in progress');
+      return;
+    }
+
     console.log('[GalaxyView] Loading world for userId:', userId, 'worldId:', mapStoreWorldId);
     didLoadWorld.current = true;
     useMapStore.getState().loadWorld();
