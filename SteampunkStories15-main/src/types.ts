@@ -226,3 +226,171 @@ export interface Mission {
   arrivalAt: number;
   travelDuration: number;
 }
+
+/**
+ * ============================================
+ * MILITARY SYSTEM TYPES (Settlement-centric)
+ * ============================================
+ */
+
+/**
+ * Player settlement serving as military operations base.
+ * Each settlement has its own fleet, resources, and defenses.
+ */
+export interface MilitarySettlement {
+  id: string;
+  playerId: string;
+  tileId: string;
+  name: string;
+  level: number;
+
+  // Local resource storage
+  resources: Resources;
+  capacities: {
+    orichalkum: number;
+    fokuskristalle: number;
+    vitriol: number;
+  };
+
+  // Energy system
+  energy: {
+    production: number;
+    consumption: number;
+    current: number;
+  };
+
+  // Military
+  baseShipIds: string[];
+  defenseIds: string[];
+
+  // Timing
+  createdAt: number;
+  lastHarvestedAt?: number;
+}
+
+/**
+ * Ship instance assigned to a settlement.
+ * Ships can be stationed or deployed in convoys.
+ */
+export interface Ship {
+  id: string;
+  playerId: string;
+  settlementId: string; // HOME BASE
+  blueprintId: string;
+  name: string;
+
+  // Status
+  status: 'stationed' | 'preparing' | 'en_route' | 'in_combat' | 'damaged' | 'destroyed';
+  currentTileId?: string;
+  convoyId?: string;
+
+  // Health
+  hullIntegrity: number; // 0-100
+
+  // Stats (from blueprint)
+  attack: number;
+  defense: number;
+  speed: number;
+  cargoCapacity: number;
+  currentCargo: Resources;
+
+  // Timing
+  createdAt: number;
+  damagedAt?: number;
+}
+
+/**
+ * Defensive structure on a tile.
+ * Structures belong to a settlement and defend against attacks.
+ */
+export interface Defense {
+  id: string;
+  settlementId: string;
+  tileId: string;
+  type: string; // 'tesla_batterie', 'dampfkanone', etc.
+  level: number;
+  hullIntegrity: number; // 0-100
+  createdAt: number;
+}
+
+/**
+ * Scout report revealing intel about a target tile.
+ * Intel level determines how much information is revealed.
+ */
+export interface ScoutReport {
+  id: string;
+  playerId: string;
+  originSettlementId: string;
+  targetTileId: string;
+  intelLevel: number; // 1-5
+  reportData: {
+    owner?: string;
+    defenseCount?: number;
+    defenseTypes?: string[];
+    stationedShipCount?: number;
+    stationedShips?: Ship[];
+  };
+  expiresAt: number;
+  createdAt: number;
+}
+
+/**
+ * Battle record tracking combat outcome.
+ * Battles occur when convoys with attack mission arrive at target.
+ */
+export interface Battle {
+  id: string;
+  attackerId: string;
+  attackerSettlementId: string;
+  defenderId: string;
+  defenderSettlementId?: string;
+  tileId: string;
+  convoyId: string;
+
+  status: 'ongoing' | 'attacker_won' | 'defender_won' | 'stalemate';
+
+  forces: {
+    attackerShips: Ship[];
+    defenderShips: Ship[];
+    defenses: Defense[];
+  };
+
+  battleReport?: {
+    rounds: number;
+    attackerCasualites: number;
+    defenderCasualites: number;
+    plunder: Resources;
+    survivors: {
+      attacker: Ship[];
+      defender: Ship[];
+    };
+  };
+
+  startedAt: number;
+  endedAt?: number;
+  createdAt: number;
+}
+
+/**
+ * Military convoy representing fleet movement or mission.
+ * Convoys are created from settlements and execute military operations.
+ */
+export interface MilitaryConvoy {
+  id: string;
+  playerId: string;
+  originSettlementId: string;
+  targetTileId: string;
+
+  shipIds: string[];
+  missionType: 'scout' | 'attack' | 'transport' | 'station' | 'colonize';
+
+  status: 'preparing' | 'en_route' | 'arrived' | 'completed' | 'cancelled';
+
+  cargo?: Resources;
+
+  // Timing
+  preparationEndsAt: number;
+  departureTime?: number;
+  arrivalTime?: number;
+  createdAt: number;
+}

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { MacroMap } from '@/components/galaxy/MacroMap';
 import { RegionView } from '@/components/galaxy/RegionView';
+import { SettlementHUD } from '@/components/galaxy/SettlementHUD';
 import { useMapStore } from '@/store/mapStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
@@ -114,6 +115,7 @@ export default function GalaxyView(): React.ReactElement {
         <div className="relative flex-1 overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-950/70 shadow-inner">
           <RegionView region={region} />
         </div>
+        <SettlementHUD playerId={userId || ''} isVisible={true} />
       </section>
     );
   }
@@ -138,6 +140,7 @@ export default function GalaxyView(): React.ReactElement {
           <MacroMap />
         )}
       </div>
+      <SettlementHUD playerId={userId || ''} isVisible={true} />
     </section>
   );
 }
