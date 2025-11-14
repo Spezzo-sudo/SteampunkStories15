@@ -186,8 +186,22 @@ export const regionHull = (region: Region, size: number) => {
 export const fitMicroView = (cam: Camera, region: Region, width: number, height: number) => {
   const { bounds } = regionHull(region, CONFIG.microHexSizePx);
   console.debug(`[fitMicroView] Bounds:`, bounds, `Canvas: ${width}x${height}`);
+  console.debug(`[fitMicroView] Bounds width: ${bounds.maxX - bounds.minX}, height: ${bounds.maxY - bounds.minY}`);
+
+  const boundWidth = bounds.maxX - bounds.minX;
+  const boundHeight = bounds.maxY - bounds.minY;
+  console.debug(`[fitMicroView] Bounds dimensions: ${boundWidth.toFixed(2)} x ${boundHeight.toFixed(2)}`);
+  console.debug(`[fitMicroView] Canvas dimensions: ${width} x ${height}`);
+
   fitToBounds(cam, bounds, width, height, CONFIG.paddingPx * 2);
   console.debug(`[fitMicroView] Camera after fit:`, { tx: cam.tx, ty: cam.ty, scale: cam.scale });
+
+  // Verify visible bounds
+  const visibleLeft = -cam.tx / cam.scale;
+  const visibleTop = -cam.ty / cam.scale;
+  const visibleRight = (width - cam.tx) / cam.scale;
+  const visibleBottom = (height - cam.ty) / cam.scale;
+  console.debug(`[fitMicroView] Visible world bounds: left=${visibleLeft.toFixed(2)}, top=${visibleTop.toFixed(2)}, right=${visibleRight.toFixed(2)}, bottom=${visibleBottom.toFixed(2)}`);
 };
 
 const drawRegion = (
@@ -237,6 +251,7 @@ const drawRegion = (
 
   let totalRenderedTiles = 0;
   console.debug(`[microRegion] Biome distribution:`, Array.from(byBiome.entries()).map(([b, t]) => `${b}(${t.length})`).join(', '));
+  console.debug(`[microRegion] First 3 tiles coords:`, region.tiles.slice(0, 3).map(t => `(${t.q},${t.r})`).join(', '));
 
   byBiome.forEach((tiles, biome) => {
     const style = BIOME_STYLE[biome as keyof typeof BIOME_STYLE];
@@ -386,6 +401,21 @@ export const drawMicro = (
 ) => {
   const homeTileKey = home?.regionId === region.id ? home.tileKey : null;
   const selectedTile = hovered ? region.tiles.find((t) => t.q === hovered.q && t.r === hovered.r) : null;
+
+  // Calculate tile coordinate bounds for diagnostics
+  if (region.tiles.length > 0) {
+    let minQ = region.tiles[0].q;
+    let maxQ = region.tiles[0].q;
+    let minR = region.tiles[0].r;
+    let maxR = region.tiles[0].r;
+    region.tiles.forEach((tile) => {
+      minQ = Math.min(minQ, tile.q);
+      maxQ = Math.max(maxQ, tile.q);
+      minR = Math.min(minR, tile.r);
+      maxR = Math.max(maxR, tile.r);
+    });
+    console.debug(`[microRegion] Tile coord bounds: q=[${minQ},${maxQ}] (span=${maxQ - minQ + 1}), r=[${minR},${maxR}] (span=${maxR - minR + 1})`);
+  }
 
   drawRegion(ctx, cam, dpr, region, CONFIG.microHexSizePx, timeMs, {
     selected: selectedTile,
