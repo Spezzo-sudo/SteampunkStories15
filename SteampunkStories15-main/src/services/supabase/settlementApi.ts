@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../supabase';
-import type { MilitarySettlement, Ship, MilitaryConvoy } from '@/types';
+import type { MilitarySettlement, Ship, MilitaryConvoy, ScoutReport } from '@/types';
+import { calculateIntelLevel, generateScoutReportData } from '@/lib/scouting';
 
 /**
  * Settlement API - Supabase client for settlement management and military operations.
@@ -370,5 +371,143 @@ export const getOutgoingConvoys = async (playerId: string): Promise<MilitaryConv
   } catch (err) {
     console.error('[settlementApi] getOutgoingConvoys error:', err);
     return [];
+  }
+};
+
+/**
+ * Initiate a scout mission from a settlement.
+ * Scouts have reduced travel time and cost.
+ */
+export const scoutFromSettlement = async (
+  playerId: string,
+  originSettlementId: string,
+  shipIds: string[],
+  targetTileId: string
+): Promise<MilitaryConvoy | null> => {
+  if (!playerId || !originSettlementId || shipIds.length === 0 || !targetTileId) {
+    console.error('scoutFromSettlement: missing required parameters');
+    return null;
+  }
+
+  try {
+    // Launch as scout mission (like launchConvoy but for scouts)
+    return launchConvoy(playerId, originSettlementId, shipIds, targetTileId, 'scout');
+  } catch (err) {
+    console.error('[settlementApi] scoutFromSettlement error:', err);
+    return null;
+  }
+};
+
+/**
+ * Get all scout reports for a player.
+ */
+export const getScoutReports = async (playerId: string): Promise<ScoutReport[]> => {
+  if (!playerId) {
+    console.error('getScoutReports: playerId is required');
+    return [];
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('scout_reports')
+      .select('*')
+      .eq('player_id', playerId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('[settlementApi] Error fetching scout reports:', error);
+      return [];
+    }
+
+    return (data as ScoutReport[]) || [];
+  } catch (err) {
+    console.error('[settlementApi] getScoutReports error:', err);
+    return [];
+  }
+};
+
+/**
+ * Get scout reports for a specific tile.
+ */
+export const getScoutReportsForTile = async (tileId: string): Promise<ScoutReport[]> => {
+  if (!tileId) {
+    console.error('getScoutReportsForTile: tileId is required');
+    return [];
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('scout_reports')
+      .select('*')
+      .eq('target_tile_id', tileId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('[settlementApi] Error fetching scout reports for tile:', error);
+      return [];
+    }
+
+    return (data as ScoutReport[]) || [];
+  } catch (err) {
+    console.error('[settlementApi] getScoutReportsForTile error:', err);
+    return [];
+  }
+};
+
+/**
+ * Create a new scout report after mission completion.
+ * Calculates intel level and generates report data.
+ */
+export const createScoutReport = async (
+  playerId: string,
+  originSettlementId: string,
+  targetTileId: string,
+  scoutShips: Ship[]
+): Promise<ScoutReport | null> => {
+  if (!playerId || !originSettlementId || !targetTileId || scoutShips.length === 0) {
+    console.error('createScoutReport: missing required parameters');
+    return null;
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+
+    // Calculate intel level based on scout ships
+    const intelLevel = calculateIntelLevel(scoutShips);
+
+    // TODO: Fetch tile info (owner, defenses, stationed ships) from database
+    // For now, create a basic report
+    const reportData = generateScoutReportData(
+      {
+        owner: undefined, // Would be fetched from tile owner
+        defenses: [], // Would be fetched from database
+        stationedShips: [], // Would be fetched from database
+      },
+      intelLevel
+    );
+
+    const scoutReport: Omit<ScoutReport, 'id'> = {
+      playerId,
+      originSettlementId,
+      targetTileId,
+      intelLevel,
+      reportData,
+      expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+      createdAt: Date.now(),
+    };
+
+    const { data, error } = await supabase.from('scout_reports').insert(scoutReport).select();
+
+    if (error) {
+      console.error('[settlementApi] Error creating scout report:', error);
+      return null;
+    }
+
+    return (data?.[0] as ScoutReport) || null;
+  } catch (err) {
+    console.error('[settlementApi] createScoutReport error:', err);
+    return null;
   }
 };
