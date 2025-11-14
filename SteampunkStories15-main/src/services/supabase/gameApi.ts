@@ -51,6 +51,19 @@ export const fetchRegion = async (worldId: string, regionId: string): Promise<Re
 
     console.log(`[fetchRegion] Got ${tilesData?.length || 0} tiles for region ${regionId}`);
     if (tilesData && tilesData.length > 0) {
+      // Calculate tile coordinate bounds
+      let minQ = tilesData[0].q;
+      let maxQ = tilesData[0].q;
+      let minR = tilesData[0].r;
+      let maxR = tilesData[0].r;
+      tilesData.forEach((tile) => {
+        minQ = Math.min(minQ, tile.q);
+        maxQ = Math.max(maxQ, tile.q);
+        minR = Math.min(minR, tile.r);
+        maxR = Math.max(maxR, tile.r);
+      });
+      console.log(`[fetchRegion] Tile coord bounds: q=[${minQ},${maxQ}] (span=${maxQ - minQ + 1}), r=[${minR},${maxR}] (span=${maxR - minR + 1})`);
+
       const biomeCounts: Record<string, number> = {};
       tilesData.forEach((tile) => {
         biomeCounts[tile.biome] = (biomeCounts[tile.biome] || 0) + 1;
