@@ -394,3 +394,88 @@ export interface MilitaryConvoy {
   arrivalTime?: number;
   createdAt: number;
 }
+
+/**
+ * ============================================
+ * COMBAT SYSTEM TYPES
+ * ============================================
+ */
+
+/**
+ * Ship snapshot for combat calculations.
+ * Captures ship state at the moment battle begins.
+ */
+export interface CombatShip {
+  id: string;
+  name: string;
+  attack: number;
+  defense: number;
+  speed: number;
+  cargoCapacity: number;
+  hullIntegrity: number; // 0-100
+  crew: number; // Total crew count
+}
+
+/**
+ * Casualty breakdown from combat round.
+ * Tracks crew losses and ship damage.
+ */
+export interface CombatLosses {
+  shipId: string;
+  shipName: string;
+  crewLost: number; // Absolute count
+  hullDamageTaken: number; // Percentage points lost
+  status: 'operational' | 'damaged' | 'destroyed';
+}
+
+/**
+ * Detailed combat round result.
+ * Represents one turn of the battle (6 rounds maximum).
+ */
+export interface BattleRound {
+  roundNumber: number;
+  attackerScore: number; // Total attack power before modifiers
+  defenderScore: number; // Total defense power
+  attackerCasualties: CombatLosses[];
+  defenderCasualties: CombatLosses[];
+  attackerHullAdvantage: number; // Average hull% - attacker hull% defender hull%
+}
+
+/**
+ * Comprehensive battle report with all combat details.
+ * Generated when attack convoy reaches target tile.
+ */
+export interface BattleReport {
+  id: string;
+  battleId: string; // Reference to Battle record
+  attackerSettlementId: string;
+  defenderSettlementId?: string; // Null if defending stationary defenses only
+  tileId: string;
+
+  // Combat flow
+  rounds: BattleRound[];
+  totalRounds: number; // 1-6 actual rounds fought
+  outcome: 'attacker_victory' | 'defender_victory' | 'stalemate';
+
+  // Final state
+  attackerLosses: {
+    totalCrewLost: number;
+    totalShipsDestroyed: number;
+    totalShipsDamaged: number;
+    survivors: CombatShip[];
+  };
+  defenderLosses: {
+    totalCrewLost: number;
+    totalShipsDestroyed: number;
+    totalShipsDamaged: number;
+    survivors: CombatShip[];
+  };
+
+  // Plunder calculation
+  plunderAvailable: Resources;
+  plunderTaken: Resources;
+  cargoCapacityUsed: number;
+
+  // Timing
+  createdAt: number;
+}

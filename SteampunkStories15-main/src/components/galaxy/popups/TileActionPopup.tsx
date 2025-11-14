@@ -6,6 +6,8 @@ import { useSettlementStore } from '@/store/settlementStore';
 import { Button } from '@/components/ui/Button';
 import { FleetSelector } from '@/components/galaxy/FleetSelector';
 import { StationingSelector } from '@/components/galaxy/StationingSelector';
+import { AttackSelector } from '@/components/galaxy/AttackSelector';
+import { BattleReport } from '@/components/galaxy/BattleReport';
 import { calculateScoutTravelTime } from '@/lib/scouting';
 import type { Tile } from '@/data/types';
 
@@ -35,6 +37,8 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
     getScoutReportsForTile,
     planStationingMission,
     getStationedShipsAtTile,
+    planAttackMission,
+    getBattlesByTile,
   } = useSettlementStore();
 
   // Scout modal state
@@ -48,6 +52,14 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
   const [selectedStationingShips, setSelectedStationingShips] = useState<string[]>([]);
   const [selectedSettlementForStationing, setSelectedSettlementForStationing] = useState<string | null>(null);
   const [stationedShips, setStationedShips] = useState(getStationedShipsAtTile(tile.id));
+
+  // Attack modal state
+  const [showAttackModal, setShowAttackModal] = useState(false);
+  const [selectedAttackShips, setSelectedAttackShips] = useState<string[]>([]);
+  const [selectedSettlementForAttack, setSelectedSettlementForAttack] = useState<string | null>(null);
+
+  // Battle report state
+  const [activeBattle, setActiveBattle] = useState(getBattlesByTile(tile.id)[0] || null);
 
   if (!tile) {
     return null;
@@ -147,6 +159,38 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
     ? getAvailableShips(selectedSettlementForStationing)
     : [];
 
+  const handleAttackClick = () => {
+    if (availableSettlements.length > 0) {
+      // Auto-select first settlement with ships
+      setSelectedSettlementForAttack(availableSettlements[0].settlement.id);
+      setShowAttackModal(true);
+      setSelectedAttackShips([]);
+    }
+  };
+
+  const handleConfirmAttack = () => {
+    if (!selectedSettlementForAttack || selectedAttackShips.length === 0) return;
+
+    const settlement = settlements.find((s) => s.id === selectedSettlementForAttack);
+    if (!settlement) return;
+
+    // Plan the attack mission
+    const convoyId = planAttackMission(selectedSettlementForAttack, selectedAttackShips, tile.id);
+
+    if (convoyId) {
+      console.log(`Attack mission planned: ${convoyId}`);
+
+      // Close modal and show confirmation
+      setShowAttackModal(false);
+      setSelectedAttackShips([]);
+      setSelectedSettlementForAttack(null);
+    }
+  };
+
+  const selectedSettlementAttackShips = selectedSettlementForAttack
+    ? getAvailableShips(selectedSettlementForAttack)
+    : [];
+
   return (
     <>
       <div className="absolute bottom-4 right-4 z-20 w-72 rounded-lg border border-slate-700 bg-slate-900/90 p-4 shadow-lg backdrop-blur-sm max-h-96 overflow-y-auto">
@@ -184,9 +228,14 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
             </>
           )}
           {!isOwnedByPlayer && availableSettlements.length > 0 && (
-            <Button onClick={handleScoutClick} variant="secondary">
-              Auskundschaften
-            </Button>
+            <>
+              <Button onClick={handleScoutClick} variant="secondary">
+                Auskundschaften
+              </Button>
+              <Button onClick={handleAttackClick} variant="secondary">
+                Angriff
+              </Button>
+            </>
           )}
           <Button onClick={() => console.log('Transport initiated')} variant="secondary">
             Transport
@@ -264,6 +313,31 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
           }}
           title="Schiffe stationieren"
           minShips={1}
+        />
+      )}
+
+      {/* Attack Modal */}
+      {showAttackModal && selectedSettlementForAttack && (
+        <AttackSelector
+          ships={selectedSettlementAttackShips}
+          selectedShips={selectedAttackShips}
+          onShipsChange={setSelectedAttackShips}
+          onConfirm={handleConfirmAttack}
+          onCancel={() => {
+            setShowAttackModal(false);
+            setSelectedAttackShips([]);
+            setSelectedSettlementForAttack(null);
+          }}
+          title="Schiffe zum Angriff wählen"
+          minShips={1}
+        />
+      )}
+
+      {/* Battle Report Modal */}
+      {activeBattle && (
+        <BattleReport
+          battle={activeBattle}
+          onClose={() => setActiveBattle(null)}
         />
       )}
     </>

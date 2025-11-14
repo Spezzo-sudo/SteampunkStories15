@@ -7,12 +7,20 @@ import type {
   ScoutReport,
   Battle,
   Defense,
+  CombatShip,
+  BattleReport,
 } from '@/types';
 import {
   calculateIntelLevel,
   checkScoutDetection,
   generateScoutReportData,
 } from '@/lib/scouting';
+import {
+  shipToCombatShip,
+  resolveCombat,
+  calculatePlunder,
+  formatCombatReport,
+} from '@/lib/combat';
 
 /**
  * Settlement state management for multi-settlement military system.
@@ -95,6 +103,17 @@ interface SettlementActions {
   progressStationingMissions: (playerId: string) => void;
   getStationedShipsAtTile: (tileId: string) => Ship[];
   recallStationedShips: (tileId: string, shipIds: string[]) => void;
+
+  // Attack Missions
+  planAttackMission: (
+    originSettlementId: string,
+    shipIds: string[],
+    targetTileId: string
+  ) => string | null;
+  executeAttackMission: (convoyId: string) => Promise<void>;
+  progressAttackMissions: (playerId: string) => void;
+  getBattle: (battleId: string) => Battle | undefined;
+  getBattlesByTile: (tileId: string) => Battle[];
 
   // Utility
   clearError: () => void;
@@ -607,6 +626,202 @@ export const useSettlementStore = create<SettlementState & SettlementActions>()(
           }
         });
       });
+    },
+
+    // ==================== ATTACK MISSIONS ====================
+
+    planAttackMission: (originSettlementId, shipIds, targetTileId) => {
+      if (!originSettlementId || shipIds.length === 0 || !targetTileId) {
+        console.error('planAttackMission: missing required parameters');
+        return null;
+      }
+
+      // Validate settlement exists
+      const settlement = get().settlements.find((s) => s.id === originSettlementId);
+      if (!settlement) {
+        console.error('planAttackMission: settlement not found');
+        return null;
+      }
+
+      // Validate ships belong to settlement
+      const ships = get().shipsBySettlement[originSettlementId] || [];
+      const validShips = ships.filter((s) => shipIds.includes(s.id));
+
+      if (validShips.length !== shipIds.length) {
+        console.error('planAttackMission: some ships not found in settlement');
+        return null;
+      }
+
+      // Create convoy ID
+      const convoyId = `convoy-attack-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+      const convoy: MilitaryConvoy = {
+        id: convoyId,
+        playerId: settlement.playerId,
+        originSettlementId,
+        targetTileId,
+        shipIds,
+        missionType: 'attack',
+        status: 'preparing',
+        preparationEndsAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+        createdAt: Date.now(),
+      };
+
+      set((state) => {
+        state.outgoingConvoys.push(convoy);
+        // Mark ships as preparing
+        validShips.forEach((ship) => {
+          const shipIndex = state.shipsBySettlement[originSettlementId].findIndex(
+            (s) => s.id === ship.id
+          );
+          if (shipIndex !== -1) {
+            state.shipsBySettlement[originSettlementId][shipIndex].status = 'preparing';
+            state.shipsBySettlement[originSettlementId][shipIndex].convoyId = convoyId;
+          }
+        });
+      });
+
+      return convoyId;
+    },
+
+    executeAttackMission: async (convoyId) => {
+      const convoy = get().outgoingConvoys.find((c) => c.id === convoyId);
+      if (!convoy || convoy.missionType !== 'attack') {
+        console.error('executeAttackMission: convoy not found or wrong type');
+        return;
+      }
+
+      set((state) => {
+        const convoyIndex = state.outgoingConvoys.findIndex((c) => c.id === convoyId);
+        if (convoyIndex !== -1) {
+          state.outgoingConvoys[convoyIndex].status = 'en_route';
+          state.outgoingConvoys[convoyIndex].departureTime = Date.now();
+          // Attack takes same travel time as scout (simplified)
+          state.outgoingConvoys[convoyIndex].arrivalTime = Date.now() + 10 * 60 * 1000; // 10 min demo
+        }
+      });
+    },
+
+    progressAttackMissions: (playerId) => {
+      const state = get();
+      const now = Date.now();
+
+      // Find attack convoys that have arrived
+      const arrivedConvoys = state.outgoingConvoys.filter(
+        (c) => c.playerId === playerId &&
+                c.missionType === 'attack' &&
+                c.status === 'en_route' &&
+                c.arrivalTime &&
+                c.arrivalTime <= now
+      );
+
+      arrivedConvoys.forEach((convoy) => {
+        // Get the attacking ships
+        const attackingShips = state.shipsBySettlement[convoy.originSettlementId]?.filter((s) =>
+          convoy.shipIds.includes(s.id)
+        ) || [];
+
+        if (attackingShips.length === 0) return;
+
+        // Get defending forces at target tile
+        const defenderShips = state.stationedShipsByTile[convoy.targetTileId] || [];
+
+        // Convert ships to combat format
+        const attackerCombatShips: CombatShip[] = attackingShips.map((s) => shipToCombatShip(s));
+        const defenderCombatShips: CombatShip[] = defenderShips.map((s) => shipToCombatShip(s));
+
+        // Resolve combat with default terrain modifier (1.0)
+        const combatResult = resolveCombat(attackerCombatShips, defenderCombatShips, 1.0, []);
+
+        // Create battle record
+        const battleId = `battle-${convoy.id}`;
+        const battle: Battle = {
+          id: battleId,
+          attackerId: playerId,
+          attackerSettlementId: convoy.originSettlementId,
+          defenderId: '', // TODO: Fetch from tile settlement
+          defenderSettlementId: undefined,
+          tileId: convoy.targetTileId,
+          convoyId: convoy.id,
+          status: combatResult.outcome === 'attacker_victory' ? 'attacker_won' : 'defender_won',
+          forces: {
+            attackerShips: attackingShips,
+            defenderShips: defenderShips,
+            defenses: [],
+          },
+          startedAt: now,
+          createdAt: now,
+        };
+
+        set((state) => {
+          state.activeBattles.push(battle);
+        });
+
+        // Calculate plunder if attacker wins
+        let plunderData = { plunderMax: {}, efficiency: 0 };
+        if (combatResult.outcome === 'attacker_victory') {
+          // TODO: Fetch actual defender resources
+          const defenderResources = { Orichalkum: 100, Fokuskristalle: 50, Vitriol: 75 };
+          plunderData = calculatePlunder(attackerCombatShips, defenderResources, combatResult.rounds);
+        }
+
+        // Update surviving ships with damage
+        set((state) => {
+          // Update attacking ships
+          attackingShips.forEach((ship) => {
+            const survivor = combatResult.attackerSurvivors.find((s) => s.id === ship.id);
+            const shipIndex = state.shipsBySettlement[convoy.originSettlementId].findIndex(
+              (s) => s.id === ship.id
+            );
+            if (shipIndex !== -1) {
+              if (survivor) {
+                // Ship survived - update hull integrity
+                state.shipsBySettlement[convoy.originSettlementId][shipIndex].hullIntegrity = survivor.hullIntegrity;
+                state.shipsBySettlement[convoy.originSettlementId][shipIndex].status = survivor.hullIntegrity > 30 ? 'stationed' : 'damaged';
+              } else {
+                // Ship was destroyed
+                state.shipsBySettlement[convoy.originSettlementId][shipIndex].status = 'destroyed';
+                state.shipsBySettlement[convoy.originSettlementId][shipIndex].hullIntegrity = 0;
+              }
+              state.shipsBySettlement[convoy.originSettlementId][shipIndex].convoyId = undefined;
+            }
+          });
+
+          // Update defending ships (if any survived)
+          defenderShips.forEach((ship) => {
+            const survivor = combatResult.defenderSurvivors.find((s) => s.id === ship.id);
+            const shipIndex = state.stationedShipsByTile[convoy.targetTileId].findIndex(
+              (s) => s.id === ship.id
+            );
+            if (shipIndex !== -1) {
+              if (survivor) {
+                // Ship survived - update hull integrity
+                state.stationedShipsByTile[convoy.targetTileId][shipIndex].hullIntegrity = survivor.hullIntegrity;
+                state.stationedShipsByTile[convoy.targetTileId][shipIndex].status = survivor.hullIntegrity > 30 ? 'stationed' : 'damaged';
+              } else {
+                // Ship was destroyed - remove from stationed
+                state.stationedShipsByTile[convoy.targetTileId].splice(shipIndex, 1);
+              }
+            }
+          });
+        });
+
+        // Mark convoy as completed
+        set((state) => {
+          const convoyIndex = state.outgoingConvoys.findIndex((c) => c.id === convoy.id);
+          if (convoyIndex !== -1) {
+            state.outgoingConvoys[convoyIndex].status = 'completed';
+          }
+        });
+      });
+    },
+
+    getBattle: (battleId) => {
+      return get().activeBattles.find((b) => b.id === battleId);
+    },
+
+    getBattlesByTile: (tileId) => {
+      return get().activeBattles.filter((b) => b.tileId === tileId);
     },
 
     // ==================== UTILITY ====================
