@@ -42,11 +42,20 @@ export const fitToBounds = (
   const h = Math.max(1, bounds.maxY - bounds.minY);
   const rawScale = Math.min(availableWidth / w, availableHeight / h);
   const scale = Number.isFinite(rawScale) && rawScale > 0 ? rawScale : 1;
+
+  console.debug(
+    `[fitToBounds] bounds=${JSON.stringify(bounds)}, w=${w.toFixed(2)}, h=${h.toFixed(2)}, ` +
+    `rawScale=${rawScale.toFixed(4)}, final scale=${scale.toFixed(4)}, ` +
+    `canvas=${width}x${height}, available=${availableWidth}x${availableHeight}`
+  );
+
   cam.scale = scale;
   cam.tx = width / 2 - (bounds.minX + w / 2) * scale;
   cam.ty = height / 2 - (bounds.minY + h / 2) * scale;
   cam.minScale = scale * 0.9;
   cam.maxScale = scale * 5;
+
+  console.debug(`[fitToBounds] Final camera: tx=${cam.tx.toFixed(2)}, ty=${cam.ty.toFixed(2)}, scale=${cam.scale.toFixed(4)}`);
 };
 
 /** Computes axis-aligned bounds for the provided point list. */
