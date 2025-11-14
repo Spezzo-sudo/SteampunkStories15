@@ -5,6 +5,7 @@ import { useSessionStore } from '@/store/sessionStore';
 import { useSettlementStore } from '@/store/settlementStore';
 import { Button } from '@/components/ui/Button';
 import { FleetSelector } from '@/components/galaxy/FleetSelector';
+import { StationingSelector } from '@/components/galaxy/StationingSelector';
 import { calculateScoutTravelTime } from '@/lib/scouting';
 import type { Tile } from '@/data/types';
 
@@ -32,6 +33,8 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
     getAvailableShips,
     planScoutMission,
     getScoutReportsForTile,
+    planStationingMission,
+    getStationedShipsAtTile,
   } = useSettlementStore();
 
   // Scout modal state
@@ -39,6 +42,12 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
   const [selectedScoutShips, setSelectedScoutShips] = useState<string[]>([]);
   const [selectedSettlementForScout, setSelectedSettlementForScout] = useState<string | null>(null);
   const [scoutReports, setScoutReports] = useState(getScoutReportsForTile(tile.id));
+
+  // Stationing modal state
+  const [showStationingModal, setShowStationingModal] = useState(false);
+  const [selectedStationingShips, setSelectedStationingShips] = useState<string[]>([]);
+  const [selectedSettlementForStationing, setSelectedSettlementForStationing] = useState<string | null>(null);
+  const [stationedShips, setStationedShips] = useState(getStationedShipsAtTile(tile.id));
 
   if (!tile) {
     return null;
@@ -103,6 +112,41 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
     ? getAvailableShips(selectedSettlementForScout)
     : [];
 
+  const handleStationingClick = () => {
+    if (availableSettlements.length > 0) {
+      // Auto-select first settlement with ships
+      setSelectedSettlementForStationing(availableSettlements[0].settlement.id);
+      setShowStationingModal(true);
+      setSelectedStationingShips([]);
+    }
+  };
+
+  const handleConfirmStationing = () => {
+    if (!selectedSettlementForStationing || selectedStationingShips.length === 0) return;
+
+    const settlement = settlements.find((s) => s.id === selectedSettlementForStationing);
+    if (!settlement) return;
+
+    // Plan the stationing mission
+    const convoyId = planStationingMission(selectedSettlementForStationing, selectedStationingShips, tile.id);
+
+    if (convoyId) {
+      console.log(`Stationing mission planned: ${convoyId}`);
+
+      // Close modal and show confirmation
+      setShowStationingModal(false);
+      setSelectedStationingShips([]);
+      setSelectedSettlementForStationing(null);
+
+      // Refresh stationed ships
+      setStationedShips(getStationedShipsAtTile(tile.id));
+    }
+  };
+
+  const selectedSettlementStationingShips = selectedSettlementForStationing
+    ? getAvailableShips(selectedSettlementForStationing)
+    : [];
+
   return (
     <>
       <div className="absolute bottom-4 right-4 z-20 w-72 rounded-lg border border-slate-700 bg-slate-900/90 p-4 shadow-lg backdrop-blur-sm max-h-96 overflow-y-auto">
@@ -128,9 +172,16 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
 
         <div className="mt-4 flex flex-col gap-2">
           {isOwnedByPlayer && (
-            <Button onClick={handleBuildClick} variant="primary">
-              Bauen
-            </Button>
+            <>
+              <Button onClick={handleBuildClick} variant="primary">
+                Bauen
+              </Button>
+              {availableSettlements.length > 0 && (
+                <Button onClick={handleStationingClick} variant="secondary">
+                  Stationieren
+                </Button>
+              )}
+            </>
           )}
           {!isOwnedByPlayer && availableSettlements.length > 0 && (
             <Button onClick={handleScoutClick} variant="secondary">
@@ -141,6 +192,20 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
             Transport
           </Button>
         </div>
+
+        {/* Stationed Ships Section */}
+        {stationedShips.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-slate-700">
+            <p className="text-xs font-semibold text-slate-300 mb-2">⚓ Stationierte Flotte ({stationedShips.length}):</p>
+            <div className="space-y-1">
+              {stationedShips.map((ship) => (
+                <div key={ship.id} className="text-xs text-slate-400">
+                  • {ship.name} (Hülle: {ship.hullIntegrity}%, Angriff: {ship.attack})
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Scout Reports Section */}
         {scoutReports.length > 0 && (
@@ -181,6 +246,23 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
             setSelectedSettlementForScout(null);
           }}
           title="Auskundschafter wählen"
+          minShips={1}
+        />
+      )}
+
+      {/* Stationing Modal */}
+      {showStationingModal && selectedSettlementForStationing && (
+        <StationingSelector
+          ships={selectedSettlementStationingShips}
+          selectedShips={selectedStationingShips}
+          onShipsChange={setSelectedStationingShips}
+          onConfirm={handleConfirmStationing}
+          onCancel={() => {
+            setShowStationingModal(false);
+            setSelectedStationingShips([]);
+            setSelectedSettlementForStationing(null);
+          }}
+          title="Schiffe stationieren"
           minShips={1}
         />
       )}

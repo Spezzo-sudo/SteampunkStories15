@@ -26,6 +26,9 @@ interface SettlementState {
   // Fleet Management (by settlement)
   shipsBySettlement: Record<string, Ship[]>;
 
+  // Stationed Fleets (by tile)
+  stationedShipsByTile: Record<string, Ship[]>;
+
   // Convoys & Operations
   outgoingConvoys: MilitaryConvoy[];
   incomingConvoys: MilitaryConvoy[];
@@ -82,6 +85,17 @@ interface SettlementActions {
   progressScoutMissions: (playerId: string) => void;
   loadScoutReports: (playerId: string) => Promise<void>;
 
+  // Stationing Missions
+  planStationingMission: (
+    originSettlementId: string,
+    shipIds: string[],
+    targetTileId: string
+  ) => string | null;
+  executeStationingMission: (convoyId: string) => Promise<void>;
+  progressStationingMissions: (playerId: string) => void;
+  getStationedShipsAtTile: (tileId: string) => Ship[];
+  recallStationedShips: (tileId: string, shipIds: string[]) => void;
+
   // Utility
   clearError: () => void;
   reset: () => void;
@@ -91,6 +105,7 @@ const initialState: SettlementState = {
   settlements: [],
   selectedSettlementId: null,
   shipsBySettlement: {},
+  stationedShipsByTile: {},
   outgoingConvoys: [],
   incomingConvoys: [],
   scoutReports: [],
@@ -444,6 +459,154 @@ export const useSettlementStore = create<SettlementState & SettlementActions>()(
           state.error = err instanceof Error ? err.message : 'Failed to load scout reports';
         });
       }
+    },
+
+    // ==================== STATIONING MISSIONS ====================
+
+    planStationingMission: (originSettlementId, shipIds, targetTileId) => {
+      if (!originSettlementId || shipIds.length === 0 || !targetTileId) {
+        console.error('planStationingMission: missing required parameters');
+        return null;
+      }
+
+      // Validate ships belong to settlement
+      const settlement = get().settlements.find((s) => s.id === originSettlementId);
+      if (!settlement) {
+        console.error('planStationingMission: settlement not found');
+        return null;
+      }
+
+      const ships = get().shipsBySettlement[originSettlementId] || [];
+      const validShips = ships.filter((s) => shipIds.includes(s.id));
+
+      if (validShips.length !== shipIds.length) {
+        console.error('planStationingMission: some ships not found in settlement');
+        return null;
+      }
+
+      // Create convoy ID
+      const convoyId = `convoy-station-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+      const convoy: MilitaryConvoy = {
+        id: convoyId,
+        playerId: settlement.playerId,
+        originSettlementId,
+        targetTileId,
+        shipIds,
+        missionType: 'station',
+        status: 'preparing',
+        preparationEndsAt: Date.now() + 5 * 60 * 1000, // 5 minutes
+        createdAt: Date.now(),
+      };
+
+      set((state) => {
+        state.outgoingConvoys.push(convoy);
+        // Mark ships as preparing
+        validShips.forEach((ship) => {
+          const shipIndex = state.shipsBySettlement[originSettlementId].findIndex(
+            (s) => s.id === ship.id
+          );
+          if (shipIndex !== -1) {
+            state.shipsBySettlement[originSettlementId][shipIndex].status = 'preparing';
+            state.shipsBySettlement[originSettlementId][shipIndex].convoyId = convoyId;
+          }
+        });
+      });
+
+      return convoyId;
+    },
+
+    executeStationingMission: async (convoyId) => {
+      const convoy = get().outgoingConvoys.find((c) => c.id === convoyId);
+      if (!convoy || convoy.missionType !== 'station') {
+        console.error('executeStationingMission: convoy not found or wrong type');
+        return;
+      }
+
+      set((state) => {
+        const convoyIndex = state.outgoingConvoys.findIndex((c) => c.id === convoyId);
+        if (convoyIndex !== -1) {
+          state.outgoingConvoys[convoyIndex].status = 'en_route';
+          state.outgoingConvoys[convoyIndex].departureTime = Date.now();
+          // Stationing takes same travel time as scout (simplified)
+          state.outgoingConvoys[convoyIndex].arrivalTime = Date.now() + 10 * 60 * 1000; // 10 min demo
+        }
+      });
+    },
+
+    progressStationingMissions: (playerId) => {
+      const state = get();
+      const now = Date.now();
+
+      // Find stationing convoys that have arrived
+      const arrivedConvoys = state.outgoingConvoys.filter(
+        (c) => c.playerId === playerId &&
+                c.missionType === 'station' &&
+                c.status === 'en_route' &&
+                c.arrivalTime &&
+                c.arrivalTime <= now
+      );
+
+      arrivedConvoys.forEach((convoy) => {
+        // Get the ships from origin settlement
+        const stationingShips = state.shipsBySettlement[convoy.originSettlementId]?.filter((s) =>
+          convoy.shipIds.includes(s.id)
+        ) || [];
+
+        if (stationingShips.length === 0) return;
+
+        // Move ships from settlement to stationed
+        set((state) => {
+          stationingShips.forEach((ship) => {
+            const shipIndex = state.shipsBySettlement[convoy.originSettlementId].findIndex(
+              (s) => s.id === ship.id
+            );
+            if (shipIndex !== -1) {
+              // Remove from settlement ships
+              const stationedShip = { ...state.shipsBySettlement[convoy.originSettlementId][shipIndex] };
+              state.shipsBySettlement[convoy.originSettlementId].splice(shipIndex, 1);
+
+              // Add to stationed ships at tile
+              if (!state.stationedShipsByTile[convoy.targetTileId]) {
+                state.stationedShipsByTile[convoy.targetTileId] = [];
+              }
+              stationedShip.status = 'stationed';
+              stationedShip.convoyId = undefined;
+              state.stationedShipsByTile[convoy.targetTileId].push(stationedShip);
+            }
+          });
+        });
+
+        // Mark convoy as completed
+        set((state) => {
+          const convoyIndex = state.outgoingConvoys.findIndex((c) => c.id === convoy.id);
+          if (convoyIndex !== -1) {
+            state.outgoingConvoys[convoyIndex].status = 'completed';
+          }
+        });
+      });
+    },
+
+    getStationedShipsAtTile: (tileId) => {
+      return get().stationedShipsByTile[tileId] || [];
+    },
+
+    recallStationedShips: (tileId, shipIds) => {
+      set((state) => {
+        const stationedShips = state.stationedShipsByTile[tileId] || [];
+        const shipsToRecall = stationedShips.filter((s) => shipIds.includes(s.id));
+
+        // For now, put them back in home settlement
+        // In real implementation, would need to track home settlement
+        shipsToRecall.forEach((ship) => {
+          const shipIndex = state.stationedShipsByTile[tileId].findIndex((s) => s.id === ship.id);
+          if (shipIndex !== -1) {
+            state.stationedShipsByTile[tileId].splice(shipIndex, 1);
+            // TODO: Move back to origin settlement
+            console.log(`Ship ${ship.name} recalled from ${tileId}`);
+          }
+        });
+      });
     },
 
     // ==================== UTILITY ====================

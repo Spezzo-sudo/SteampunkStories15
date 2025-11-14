@@ -5,6 +5,7 @@ import { SettlementHUD } from '@/components/galaxy/SettlementHUD';
 import { useMapStore } from '@/store/mapStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
+import { useMissionGameLoop } from '@/hooks/useMissionGameLoop';
 
 /** Renders a welcome screen for players who have not yet placed a home base. */
 const WelcomeMode: React.FC = () => (
@@ -38,6 +39,9 @@ export default function GalaxyView(): React.ReactElement {
 
   // --- Memoized Values ---
   const regionCount = useMemo(() => world?.regions.length ?? 0, [world]);
+
+  // --- Game Loop ---
+  useMissionGameLoop(); // Progresses scout and stationing missions
 
   // --- Effects ---
   // Set worldId in mapStore if not already set
