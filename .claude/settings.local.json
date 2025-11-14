@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run typecheck:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run seed:supabase:*)",
+      "Bash(npm run dev:*)",
+      "Bash(node debug-browser.mjs:*)",
+      "Bash(npx tsx:*)",
+      "Bash(find:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

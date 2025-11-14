@@ -1,0 +1,27 @@
+{
+  "regionId": "1_-1",
+  "RQ": 1,
+  "RR": -1,
+  "radius": 2,
+  "tiles": [
+    { "q": 0, "r": 0, "biome": "Rußklippen", "settleable": false, "poi": ["Schlackenschacht"], "allianceId": "alliance-7" },
+    { "q": 1, "r": 0, "biome": "Ödland", "settleable": false, "allianceId": "alliance-7" },
+    { "q": 1, "r": -1, "biome": "Rußklippen", "settleable": false },
+    { "q": 0, "r": -1, "biome": "Ödland", "settleable": false },
+    { "q": -1, "r": 0, "biome": "Steppe", "settleable": true, "allianceId": "alliance-3" },
+    { "q": -1, "r": 1, "biome": "Steppe", "settleable": true, "allianceId": "alliance-3" },
+    { "q": 0, "r": 1, "biome": "Hochland", "settleable": true, "allianceId": "alliance-8" },
+    { "q": 1, "r": 1, "biome": "Hochland", "settleable": true, "allianceId": "alliance-8" },
+    { "q": 2, "r": 0, "biome": "Steppe", "settleable": true, "allianceId": "alliance-2" },
+    { "q": 2, "r": -1, "biome": "Steppe", "settleable": true, "allianceId": "alliance-2" },
+    { "q": 1, "r": -2, "biome": "Moor", "settleable": false },
+    { "q": 0, "r": -2, "biome": "Moor", "settleable": false, "poi": ["Verlassene Förderstrecke"] },
+    { "q": -1, "r": -1, "biome": "Dampfwiese", "settleable": true, "allianceId": "alliance-9" },
+    { "q": -2, "r": 0, "biome": "Dampfwiese", "settleable": true, "allianceId": "alliance-9" },
+    { "q": -2, "r": 1, "biome": "Kristallufer", "settleable": true, "allianceId": "alliance-4" },
+    { "q": -1, "r": 2, "biome": "Kristallufer", "settleable": true, "allianceId": "alliance-4" },
+    { "q": 0, "r": 2, "biome": "Wald", "settleable": true, "allianceId": "alliance-5" },
+    { "q": 1, "r": 2, "biome": "Wald", "settleable": true, "poi": ["Rußblütenhain"], "allianceId": "alliance-5" },
+    { "q": 2, "r": -2, "biome": "Ödland", "settleable": false }
+  ]
+}
