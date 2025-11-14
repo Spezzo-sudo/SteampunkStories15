@@ -71,8 +71,8 @@ export default function GalaxyView(): React.ReactElement {
   if (profile && !profile.hasPlacedHome) {
     if (view === 'micro' && region) {
       return (
-        <section className="map-h flex flex-col p-2 sm:p-4">
-          <div className="absolute left-1/2 top-6 z-10 -translate-x-1/2 rounded-md bg-slate-900/80 px-4 py-2 text-white shadow-lg">
+        <section className="map-h relative flex flex-col p-2 sm:p-4">
+          <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-md bg-slate-900/90 px-6 py-3 text-center text-sm text-amber-100 shadow-lg border border-slate-700/40">
             Wähle ein Feld, um deine Heimatbasis zu errichten.
           </div>
           <div className="relative flex-1 overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-950/70 shadow-inner">
