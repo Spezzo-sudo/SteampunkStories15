@@ -153,8 +153,7 @@ export const BUILDINGS: Record<string, Building> = {
     energyConsumptionMultiplier: 1.15,
     maxLevel: 20,
     requires: [
-      { type: 'building', id: 'dampfkraftwerk', level: 1 },
-      { type: 'energy' }
+      { type: 'building', id: 'dampfkraftwerk', level: 1 }
     ],
   },
 
@@ -175,8 +174,7 @@ export const BUILDINGS: Record<string, Building> = {
     maxLevel: 20,
     requires: [
       { type: 'research', id: 'kolbenAntrieb', level: 1 },
-      { type: 'building', id: 'dampfkraftwerk', level: 2 },
-      { type: 'energy' }
+      { type: 'building', id: 'dampfkraftwerk', level: 2 }
     ],
   },
 };

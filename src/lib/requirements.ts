@@ -160,7 +160,7 @@ export const canBuildShip = (
   werftLevel: number,
   currentResearch: Record<string, number>
 ): ValidationResult => {
-  const ship = SHIP_BLUEPRINTS[shipId as keyof typeof SHIP_BLUEPRINTS];
+  const ship = SHIP_BLUEPRINTS.find((b) => b.id === shipId);
   if (!ship) {
     return { canDo: false, missing: ['Schiff nicht gefunden'] };
   }

@@ -150,7 +150,6 @@ export const useMissionStore = create<MissionState & MissionActions>()(
       });
 
       const coordinate = formatSystemCoordinate(targetContext.system);
-      const { pushToast } = useUiStore.getState();
       const preparationMinutes = Math.round(MISSION_PREPARATION_TIME / 60000);
       pushToast({
         title: `${getMissionTypeLabel(missionType)} vorbereitet`,
