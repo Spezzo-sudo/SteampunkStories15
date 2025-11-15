@@ -1,18 +1,18 @@
 import type { Biome } from '@/data/types';
 
 /** Palette and pattern configuration for each biome. */
-export const BIOME_STYLE: Record<Biome, { base: string; edge: string; pattern: PatternKind }> = {
-  DESERT: { base: '#e9c46a', edge: '#fff2c2', pattern: 'waves' },
-  FOREST: { base: '#2a9d8f', edge: '#c8f5ee', pattern: 'dots' },
-  HILLS: { base: '#d989b5', edge: '#ffe2f0', pattern: 'raute' },
-  PLAINS: { base: '#90be6d', edge: '#e5f5d8', pattern: 'diag' },
-  SWAMP: { base: '#577590', edge: '#dce9f6', pattern: 'noise' },
-  LAKE: { base: '#4d8bfe', edge: '#cfe1ff', pattern: 'dots' },
-  MOUNTAIN: { base: '#8d99ae', edge: '#e9edf5', pattern: 'raute' },
-  TUNDRA: { base: '#b8d0eb', edge: '#ffffff', pattern: 'diag' },
+export const BIOME_STYLE: Record<Biome, { base: string; edge: string; pattern: PatternKind; texture: string }> = {
+  DESERT: { base: '#e9c46a', edge: '#fff2c2', pattern: 'waves', texture: '/assets/tiles256/wuste_biom.png' },
+  FOREST: { base: '#2a9d8f', edge: '#c8f5ee', pattern: 'dots', texture: '/assets/tiles256/kristallriff_biom.png' },
+  HILLS: { base: '#d989b5', edge: '#ffe2f0', pattern: 'raute', texture: '/assets/tiles256/trummerfeld_biom.png' },
+  PLAINS: { base: '#90be6d', edge: '#e5f5d8', pattern: 'diag', texture: '/assets/tiles256/handelsroute_biom.png' },
+  SWAMP: { base: '#577590', edge: '#dce9f6', pattern: 'noise', texture: '/assets/tiles256/industrie_rauchwolke_biom.png' },
+  LAKE: { base: '#4d8bfe', edge: '#cfe1ff', pattern: 'dots', texture: '/assets/tiles256/aetherquelle_biom.png' },
+  MOUNTAIN: { base: '#8d99ae', edge: '#e9edf5', pattern: 'raute', texture: '/assets/tiles256/kristallriff_biom.png' },
+  TUNDRA: { base: '#b8d0eb', edge: '#ffffff', pattern: 'diag', texture: '/assets/tiles256/eis_biom.png' },
   // Legacy biome codes for backward compatibility
-  MOUNTAINS: { base: '#8d99ae', edge: '#e9edf5', pattern: 'raute' }, // alias for MOUNTAIN
-  OCEAN: { base: '#4d8bfe', edge: '#cfe1ff', pattern: 'dots' }, // alias for LAKE
+  MOUNTAINS: { base: '#8d99ae', edge: '#e9edf5', pattern: 'raute', texture: '/assets/tiles256/kristallriff_biom.png' }, // alias for MOUNTAIN
+  OCEAN: { base: '#4d8bfe', edge: '#cfe1ff', pattern: 'dots', texture: '/assets/tiles256/aetherquelle_biom.png' }, // alias for LAKE
 };
 
 /** Pattern kinds supported by the biome fill renderer. */

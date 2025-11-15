@@ -48,6 +48,32 @@ const preloadTexture = (url: string): Promise<HTMLImageElement> => {
   return promise;
 };
 
+/**
+ * Lighten a hex color by a specified amount (0-1).
+ * @param hex - Hex color code (e.g., '#ff0000')
+ * @param amount - Lightening amount (0-1)
+ */
+const lightenColor = (hex: string, amount: number): string => {
+  const rgb = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, Math.floor((rgb >> 16) + 255 * amount));
+  const g = Math.min(255, Math.floor(((rgb >> 8) & 255) + 255 * amount));
+  const b = Math.min(255, Math.floor((rgb & 255) + 255 * amount));
+  return `rgb(${r},${g},${b})`;
+};
+
+/**
+ * Darken a hex color by a specified amount (0-1).
+ * @param hex - Hex color code (e.g., '#ff0000')
+ * @param amount - Darkening amount (0-1)
+ */
+const darkenColor = (hex: string, amount: number): string => {
+  const rgb = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, Math.floor((rgb >> 16) * (1 - amount)));
+  const g = Math.max(0, Math.floor(((rgb >> 8) & 255) * (1 - amount)));
+  const b = Math.max(0, Math.floor((rgb & 255) * (1 - amount)));
+  return `rgb(${r},${g},${b})`;
+};
+
 const drawHomeEmblem = (
   ctx: CanvasRenderingContext2D,
   cam: Camera,
@@ -257,7 +283,11 @@ const drawRegion = (
       ctx.save();
       ctx.translate(p.x, p.y);
 
-      ctx.fillStyle = style.base;
+      // Create radial gradient for depth instead of flat fill
+      const gradient = ctx.createRadialGradient(0, -size * 0.2, size * 0.15, 0, 0, size * 0.9);
+      gradient.addColorStop(0, lightenColor(style.base, 0.12));
+      gradient.addColorStop(1, darkenColor(style.base, 0.15));
+      ctx.fillStyle = gradient;
       ctx.globalAlpha = 1;
       ctx.fill(hexPath(size - 1.2));
 
@@ -276,15 +306,16 @@ const drawRegion = (
       });
 
       if (pattern) {
-        ctx.globalAlpha = 0.12;
+        ctx.globalAlpha = 0.20;
         ctx.fillStyle = pattern;
         ctx.fill(hexPath(size - 1.6));
       }
 
+      // Strengthen lighting effects with enhanced bevel gradient
       const bevel = ctx.createLinearGradient(0, -size, 0, size);
-      bevel.addColorStop(0, 'rgba(255,255,255,0.16)');
+      bevel.addColorStop(0, 'rgba(255,255,255,0.24)');
       bevel.addColorStop(0.55, 'rgba(255,255,255,0)');
-      bevel.addColorStop(1, 'rgba(15,23,42,0.32)');
+      bevel.addColorStop(1, 'rgba(15,23,42,0.48)');
       ctx.globalAlpha = 1;
       ctx.fillStyle = bevel;
       ctx.fill(hexPath(size - 1.4));
