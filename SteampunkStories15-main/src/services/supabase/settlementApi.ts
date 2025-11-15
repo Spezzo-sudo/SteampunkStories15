@@ -140,9 +140,10 @@ export const createSettlement = async (
   try {
     const supabase = getSupabaseClient();
 
-    const settlement: Omit<MilitarySettlement, 'id'> = {
-      playerId,
-      tileId,
+    // Map camelCase TypeScript interface to snake_case database schema
+    const settlementData = {
+      player_id: playerId,
+      tile_id: tileId,
       name,
       level: 1,
       resources: {
@@ -160,19 +161,43 @@ export const createSettlement = async (
         consumption: 50,
         current: 100,
       },
-      baseShipIds: [],
-      defenseIds: [],
-      createdAt: Date.now(),
+      base_ship_ids: [],
+      defense_ids: [],
+      // Let database handle timestamp with DEFAULT NOW()
     };
 
-    const { data, error } = await supabase.from('settlements').insert(settlement).select();
+    const { data, error } = await supabase.from('settlements').insert(settlementData).select();
 
     if (error) {
       console.error('[settlementApi] Error creating settlement:', error);
       return null;
     }
 
-    return (data?.[0] as MilitarySettlement) || null;
+    if (!data || data.length === 0) {
+      console.error('[settlementApi] Settlement created but no data returned');
+      return null;
+    }
+
+    const newSettlement = data[0];
+
+    // Update tile ownership after settlement creation
+    const { error: tileError } = await supabase
+      .from('tiles')
+      .update({
+        owner_id: playerId,
+        settlement_id: newSettlement.id,
+        is_settlement: true,
+      })
+      .eq('id', tileId);
+
+    if (tileError) {
+      console.error('[settlementApi] Error updating tile ownership:', tileError);
+      // Note: Settlement was created, but tile update failed
+      // In production, might want to rollback settlement creation
+      // For now, we continue and return the settlement
+    }
+
+    return (newSettlement as MilitarySettlement) || null;
   } catch (err) {
     console.error('[settlementApi] createSettlement error:', err);
     return null;
