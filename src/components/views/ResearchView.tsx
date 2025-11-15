@@ -1,7 +1,8 @@
 import React from 'react';
 import { useGameStore } from '@/store/gameStore';
-import { RESEARCH } from '@/constants';
-import GameCard from '@/components/ui/GameCard';
+import { RESEARCH, BUILDINGS } from '@/constants';
+import GameCard, { RequirementInfo } from '@/components/ui/GameCard';
+import { canResearch } from '@/lib/requirements';
 
 const RESEARCH_CATEGORIES = {
   antrieb: [
@@ -36,22 +37,41 @@ const CATEGORY_LABELS: Record<keyof typeof RESEARCH_CATEGORIES, string> = {
   utility: 'Utility',
 };
 
-const RESEARCH_REQUIREMENTS: Record<string, string[]> = {
-  aetherdynamik: ['Werft Stufe 2'],
-  kolbenAntrieb: ['Werft Stufe 1', 'Dampfkraftwerk Stufe 4'],
-  dampfjet: ['Kolbenantrieb Stufe 3'],
-  aethermotor: ['Ätherdynamik Stufe 5', 'Forschungslabor Stufe 8'],
-  kesseldruckOptimierung: ['Dampfkraftwerk Stufe 3'],
-  differenzmaschinenKalkuel: ['Forschungslabor Stufe 2'],
-  observatoriumsnetz: ['Spionagetechnologie Stufe 2'],
-  panzerungstechnik: ['Rumpfverstärkungslegierungen Stufe 2'],
-  teslaSpulenForschung: ['Dampfkraftwerk Stufe 6'],
-  lichtbogenIngenieurwesen: ['Tesla-Spulen-Forschung Stufe 4'],
-  pulverProjektilkunde: ['Vitriol-Destille Stufe 3'],
-  magnetfeldBarrieren: ['Panzerungstechnik Stufe 4'],
-  aetherplasmaEntladungen: ['Äthermotor Stufe 3'],
-  spionagetechnologie: ['Observatoriumsnetz Stufe 1'],
-  rumpfverstaerkungsLegierungen: ['Orichalkum-Schmelze Stufe 5'],
+/**
+ * Converts requirement definition to RequirementInfo for display.
+ */
+const buildRequirementsList = (
+  tech: typeof RESEARCH[keyof typeof RESEARCH],
+  currentResearch: Record<string, number>,
+  currentBuildings: Record<string, number>
+): RequirementInfo[] => {
+  if (!tech.requires || tech.requires.length === 0) {
+    return [];
+  }
+
+  return tech.requires.map((req) => {
+    if (req.type === 'research') {
+      const researchName = RESEARCH[req.id as keyof typeof RESEARCH]?.name || req.id;
+      const requiredLevel = req.level || 1;
+      const currentLevel = currentResearch[req.id] || 0;
+
+      return {
+        name: researchName,
+        required: `Stufe ${requiredLevel}`,
+        met: currentLevel >= requiredLevel,
+      };
+    } else {
+      const buildingName = BUILDINGS[req.id as keyof typeof BUILDINGS]?.name || req.id;
+      const requiredLevel = req.level || 1;
+      const currentLevel = currentBuildings[req.id] || 0;
+
+      return {
+        name: buildingName,
+        required: `Level ${requiredLevel}`,
+        met: currentLevel >= requiredLevel,
+      };
+    }
+  });
 };
 
 const ALL_CATEGORY_KEY = 'alle';
@@ -63,6 +83,7 @@ type CategoryKey = keyof typeof RESEARCH_CATEGORIES | typeof ALL_CATEGORY_KEY;
  */
 const ResearchView: React.FC = () => {
   const research = useGameStore((state) => state.research);
+  const buildings = useGameStore((state) => state.buildings);
   const buildQueue = useGameStore((state) => state.buildQueue);
   const canAfford = useGameStore((state) => state.canAfford);
   const getUpgradeCost = useGameStore((state) => state.getUpgradeCost);
@@ -133,7 +154,10 @@ const ResearchView: React.FC = () => {
           const buildTime = getBuildTime(costForNextUpgrade);
           const isUpgrading = buildQueue.some((item) => item.entityId === tech.id);
           const affordable = canAfford(costForNextUpgrade);
-          const requirements = RESEARCH_REQUIREMENTS[tech.id] ?? ['Forschungslabor Stufe 1'];
+
+          // UPDATED: Use dynamic requirements from tech definition
+          const validation = canResearch(tech.id, research, buildings);
+          const requirementsList = buildRequirementsList(tech, research, buildings);
 
           return (
             <GameCard
@@ -147,18 +171,11 @@ const ResearchView: React.FC = () => {
               upgradeCost={costForNextUpgrade}
               buildTime={buildTime}
               canAfford={affordable}
+              canUpgrade={validation.canDo}
+              requirements={requirementsList}
               onUpgrade={() => startUpgrade(tech)}
               isUpgrading={isUpgrading}
               queueLength={buildQueue.length}
-              meta={(
-                <ul className="flex flex-wrap gap-2 text-xs">
-                  {requirements.map((req) => (
-                    <li key={req} className="rounded-full bg-yellow-900/40 px-3 py-1 text-yellow-200">
-                      {req}
-                    </li>
-                  ))}
-                </ul>
-              )}
             />
           );
         })}
