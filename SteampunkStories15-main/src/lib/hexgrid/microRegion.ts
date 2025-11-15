@@ -293,12 +293,15 @@ const drawRegion = (
 
       const texture = loadTexture(style.texture);
       if (texture) {
+        ctx.save();
+        ctx.rotate(Math.PI / 2);  // Rotate 90° clockwise to correct texture orientation
         ctx.globalAlpha = 0.4;
         try {
           ctx.drawImage(texture, -size, -size, size * 2, size * 2);
         } catch (error) {
           // Texture is in broken state, skip drawing
         }
+        ctx.restore();
       }
       // Always start preloading textures for next frame
       preloadTexture(style.texture).catch(() => {
