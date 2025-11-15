@@ -234,10 +234,13 @@ const drawRegion = (
       ctx.globalAlpha = 1;
       ctx.fill(hexPath(size - 1.2));
 
-      const texture = loadTexture(style.texture);
-      if (texture.complete) {
-        ctx.globalAlpha = 0.4;
-        ctx.drawImage(texture, -size, -size, size * 2, size * 2);
+      const textureUrl = style.texture;
+      if (textureUrl) {
+        const texture = loadTexture(textureUrl);
+        if (texture && texture.complete) {
+          ctx.globalAlpha = 0.4;
+          ctx.drawImage(texture, -size, -size, size * 2, size * 2);
+        }
       }
 
       if (pattern) {

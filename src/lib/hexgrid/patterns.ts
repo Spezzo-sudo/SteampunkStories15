@@ -1,15 +1,71 @@
 import type { Biome } from '@/data/types';
 
 /** Palette and pattern configuration for each biome. */
-export const BIOME_STYLE: Record<Biome, { base: string; edge: string; pattern: PatternKind }> = {
-  DESERT: { base: '#e9c46a', edge: '#fff2c2', pattern: 'waves' },
-  FOREST: { base: '#2a9d8f', edge: '#c8f5ee', pattern: 'dots' },
-  HILLS: { base: '#d989b5', edge: '#ffe2f0', pattern: 'raute' },
-  PLAINS: { base: '#90be6d', edge: '#e5f5d8', pattern: 'diag' },
-  SWAMP: { base: '#577590', edge: '#dce9f6', pattern: 'noise' },
-  LAKE: { base: '#4d8bfe', edge: '#cfe1ff', pattern: 'dots' },
-  MOUNTAIN: { base: '#8d99ae', edge: '#e9edf5', pattern: 'raute' },
-  TUNDRA: { base: '#b8d0eb', edge: '#ffffff', pattern: 'diag' },
+export const BIOME_STYLE: Record<
+  Biome,
+  { base: string; edge: string; pattern: PatternKind; texture: string }
+> = {
+  DESERT: {
+    base: '#e9c46a',
+    edge: '#fff2c2',
+    pattern: 'waves',
+    texture: '/assets/tiles256/wueste_1.png',
+  },
+  FOREST: {
+    base: '#2a9d8f',
+    edge: '#c8f5ee',
+    pattern: 'dots',
+    texture: '/assets/tiles256/laubwald_1.png',
+  },
+  HILLS: {
+    base: '#d989b5',
+    edge: '#ffe2f0',
+    pattern: 'raute',
+    texture: '/assets/tiles256/field_1.png',
+  },
+  PLAINS: {
+    base: '#90be6d',
+    edge: '#e5f5d8',
+    pattern: 'diag',
+    texture: '/assets/tiles256/field_1.png',
+  },
+  SWAMP: {
+    base: '#577590',
+    edge: '#dce9f6',
+    pattern: 'noise',
+    texture: '/assets/tiles256/forest_pipe_1.png',
+  },
+  LAKE: {
+    base: '#4d8bfe',
+    edge: '#cfe1ff',
+    pattern: 'dots',
+    texture: '/assets/tiles256/coast_1.png',
+  },
+  MOUNTAIN: {
+    base: '#8d99ae',
+    edge: '#e9edf5',
+    pattern: 'raute',
+    texture: '/assets/tiles256/cristal_cave_1.png',
+  },
+  TUNDRA: {
+    base: '#b8d0eb',
+    edge: '#ffffff',
+    pattern: 'diag',
+    texture: '/assets/tiles256/ice_cave_1.png',
+  },
+  // Legacy aliases to map old biome codes to textures.
+  MOUNTAINS: {
+    base: '#8d99ae',
+    edge: '#e9edf5',
+    pattern: 'raute',
+    texture: '/assets/tiles256/cristal_cave_1.png',
+  },
+  OCEAN: {
+    base: '#4d8bfe',
+    edge: '#cfe1ff',
+    pattern: 'dots',
+    texture: '/assets/tiles256/coast_1.png',
+  },
 };
 
 /** Pattern kinds supported by the biome fill renderer. */
