@@ -34,17 +34,39 @@ const scaleCost = (base: Resources, quantity: number): Resources => ({
   [ResourceType.Vitriol]: base[ResourceType.Vitriol] * quantity,
 });
 
+/**
+ * Calculates total build duration for a ship order with werft bonuses applied.
+ *
+ * @param blueprint - Ship blueprint with buildTimeSeconds
+ * @param quantity - Number of ships to build (builds sequentially)
+ * @param werftLevel - Current werft building level (0 = no bonus)
+ * @returns Total duration in milliseconds
+ *
+ * LOGIC:
+ * - Base duration = blueprint.buildTimeSeconds (in seconds) × 1000 (convert to ms) × quantity (sequential builds)
+ * - Werft bonus = -5% per werft level applied to TOTAL duration
+ * - Example: 2 ships at 3600s each = 7200s base
+ *   - Werft level 1: 7200s × (1 - 0.05) = 6840s
+ *   - Werft level 5: 7200s × (1 - 0.25) = 5400s
+ * - Bonus applies to entire queue, not per-ship, encouraging high werft levels
+ */
 const calculateDuration = (blueprint: ShipBlueprint, quantity: number, werftLevel: number = 0) => {
-  // Base duration
   const baseDuration = blueprint.buildTimeSeconds * 1000 * quantity;
-  // Apply werft level bonus: -5% build time per level
   const timeMultiplier = 1 - werftLevel * 0.05;
   return baseDuration * timeMultiplier;
 };
 
 /**
  * Calculates cost multiplier based on werft level.
- * -2% cost per werft level (better efficiency with higher werft levels).
+ *
+ * @param werftLevel - Current werft building level (0 = no bonus)
+ * @returns Multiplier to apply to ship costs (e.g., 0.9 = 10% discount)
+ *
+ * LOGIC:
+ * - Base multiplier = 1.0 (no discount)
+ * - Werft bonus = -2% per werft level
+ * - Example costs at werft level 3: cost × (1 - 0.06) = cost × 0.94 (6% discount)
+ * - Helps offset higher werft construction costs and encourages investment
  */
 const getWerftCostMultiplier = (werftLevel: number): number => {
   return 1 - werftLevel * 0.02;
