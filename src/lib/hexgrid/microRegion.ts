@@ -1,6 +1,7 @@
 import type { HomeSelection, Region, Tile } from '@/data/types';
 import { buildAllianceMap } from '@/data/factions';
 import { CONFIG } from '@/config/mapConfig';
+import { traceTextureEvent } from '@/lib/debug/textureTracer';
 import { DIRS, axialToPx, disk, hexCorner, hexPath, key } from './hex';
 import type { Camera } from './viewport';
 import { boundsOf, fitToBounds, strokePx } from './viewport';
@@ -11,10 +12,22 @@ const BIOMES = Object.keys(BIOME_STYLE) as Array<keyof typeof BIOME_STYLE>;
 const imageCache = new Map<string, HTMLImageElement>();
 
 const loadTexture = (url: string) => {
-  if (imageCache.has(url)) {
-    return imageCache.get(url)!;
+  let img = imageCache.get(url);
+  if (img) {
+    if (img.complete) {
+      traceTextureEvent(url, 'cached');
+    }
+    return img;
   }
-  const img = new Image();
+  img = new Image();
+  traceTextureEvent(url, 'requested');
+  img.onload = () => {
+    traceTextureEvent(url, 'loaded');
+  };
+  img.onerror = () => {
+    console.warn(`[microRegion] Failed to load texture: ${url}`);
+    traceTextureEvent(url, 'failed');
+  };
   img.src = url;
   imageCache.set(url, img);
   return img;
