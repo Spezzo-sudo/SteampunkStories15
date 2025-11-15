@@ -117,7 +117,7 @@ export interface ShipBlueprint {
   crew: number;
   cargo: number;
   requiredWerftLevel?: number;
-  requiredResearch?: string[];
+  requiredResearch?: Array<{ id: string; level?: number }>;
 }
 
 /**
@@ -127,6 +127,7 @@ export interface ShipBuildOrder {
   id: string;
   blueprintId: string;
   quantity: number;
+  costPaid: Resources; // Actual cost paid (with werft bonuses applied)
   startTime: number;
   endTime: number;
   status: 'queued' | 'building' | 'completed' | 'cancelled';

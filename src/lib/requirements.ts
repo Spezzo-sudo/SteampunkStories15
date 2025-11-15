@@ -42,28 +42,36 @@ export const canResearch = (
     return { canDo: false, missing: ['Forschung nicht gefunden'] };
   }
 
-  if (!research.requires || research.requires.length === 0) {
-    return { canDo: true, missing: [] };
+  // Check max level
+  if (research.maxLevel && currentResearch[researchId]) {
+    if (currentResearch[researchId] >= research.maxLevel) {
+      return {
+        canDo: false,
+        missing: [`Maximales Level erreicht: ${research.maxLevel}`],
+      };
+    }
   }
 
   const missing: string[] = [];
 
-  for (const req of research.requires) {
-    if (req.type === 'research') {
-      const researchName = RESEARCH[req.id as keyof typeof RESEARCH]?.name || req.id;
-      const requiredLevel = req.level || 1;
-      const currentLevel = currentResearch[req.id] || 0;
+  if (research.requires && research.requires.length > 0) {
+    for (const req of research.requires) {
+      if (req.type === 'research') {
+        const researchName = RESEARCH[req.id as keyof typeof RESEARCH]?.name || req.id;
+        const requiredLevel = req.level || 1;
+        const currentLevel = currentResearch[req.id] || 0;
 
-      if (currentLevel < requiredLevel) {
-        missing.push(`${researchName} Stufe ${requiredLevel}`);
-      }
-    } else if (req.type === 'building') {
-      const buildingName = BUILDINGS[req.id as keyof typeof BUILDINGS]?.name || req.id;
-      const requiredLevel = req.level || 1;
-      const currentLevel = currentBuildings[req.id] || 0;
+        if (currentLevel < requiredLevel) {
+          missing.push(`${researchName} Stufe ${requiredLevel}`);
+        }
+      } else if (req.type === 'building') {
+        const buildingName = BUILDINGS[req.id as keyof typeof BUILDINGS]?.name || req.id;
+        const requiredLevel = req.level || 1;
+        const currentLevel = currentBuildings[req.id] || 0;
 
-      if (currentLevel < requiredLevel) {
-        missing.push(`${buildingName} Level ${requiredLevel}`);
+        if (currentLevel < requiredLevel) {
+          missing.push(`${buildingName} Level ${requiredLevel}`);
+        }
       }
     }
   }
@@ -103,41 +111,40 @@ export const canBuildOrUpgrade = (
     };
   }
 
-  // Check prerequisites
-  if (!building.requires || building.requires.length === 0) {
-    return { canDo: true, missing: [] };
-  }
-
   const missing: string[] = [];
   let energyBlocked = false;
 
-  for (const req of building.requires) {
-    if (req.type === 'research') {
-      const researchName = RESEARCH[req.id as keyof typeof RESEARCH]?.name || req.id;
-      const requiredLevel = req.level || 1;
-      const currentLevel = currentResearch[req.id] || 0;
+  // Check prerequisites
+  if (building.requires && building.requires.length > 0) {
+    for (const req of building.requires) {
+      if (req.type === 'research') {
+        const researchName = RESEARCH[req.id as keyof typeof RESEARCH]?.name || req.id;
+        const requiredLevel = req.level || 1;
+        const currentLevel = currentResearch[req.id] || 0;
 
-      if (currentLevel < requiredLevel) {
-        missing.push(`${researchName} Stufe ${requiredLevel}`);
-      }
-    } else if (req.type === 'building') {
-      const buildingName = BUILDINGS[req.id as keyof typeof BUILDINGS]?.name || req.id;
-      const requiredLevel = req.level || 1;
-      const currentLevel = currentBuildings[req.id] || 0;
+        if (currentLevel < requiredLevel) {
+          missing.push(`${researchName} Stufe ${requiredLevel}`);
+        }
+      } else if (req.type === 'building') {
+        const buildingName = BUILDINGS[req.id as keyof typeof BUILDINGS]?.name || req.id;
+        const requiredLevel = req.level || 1;
+        const currentLevel = currentBuildings[req.id] || 0;
 
-      if (currentLevel < requiredLevel) {
-        missing.push(`${buildingName} Level ${requiredLevel}`);
+        if (currentLevel < requiredLevel) {
+          missing.push(`${buildingName} Level ${requiredLevel}`);
+        }
       }
-    } else if (req.type === 'energy') {
-      // Check if building would exceed energy capacity
-      const energyConsumption = building.baseEnergyConsumption || 0;
-      const wouldExceed =
-        currentEnergy.consumption + energyConsumption > currentEnergy.capacity;
+    }
+  }
 
-      if (wouldExceed) {
-        energyBlocked = true;
-        missing.push('Nicht genug Energiekapazität');
-      }
+  // ALWAYS check energy for buildings with consumption (separate from requirements)
+  if (building.baseEnergyConsumption && building.baseEnergyConsumption > 0) {
+    const wouldExceed =
+      currentEnergy.consumption + building.baseEnergyConsumption > currentEnergy.capacity;
+
+    if (wouldExceed) {
+      energyBlocked = true;
+      missing.push('Nicht genug Energiekapazität');
     }
   }
 
@@ -175,15 +182,16 @@ export const canBuildShip = (
 
   // Check research requirements
   if (ship.requiredResearch && ship.requiredResearch.length > 0) {
-    for (const researchId of ship.requiredResearch) {
+    for (const req of ship.requiredResearch) {
+      const researchId = typeof req === 'string' ? req : req.id;
+      const requiredLevel = typeof req === 'string' ? 1 : req.level || 1;
       const research = RESEARCH[researchId as keyof typeof RESEARCH];
       if (!research) continue;
 
-      const requiredLevel = 1;
       const currentLevel = currentResearch[researchId] || 0;
 
       if (currentLevel < requiredLevel) {
-        missing.push(`${research.name}`);
+        missing.push(`${research.name} Stufe ${requiredLevel}`);
       }
     }
   }
@@ -215,26 +223,30 @@ export const canLaunchMission = (
 
   // Check building requirements
   if (requirements.buildings && requirements.buildings.length > 0) {
-    for (const buildingId of requirements.buildings) {
+    for (const req of requirements.buildings) {
+      const buildingId = typeof req === 'string' ? req : req.id;
+      const requiredLevel = typeof req === 'string' ? 1 : req.level || 1;
       const building = BUILDINGS[buildingId as keyof typeof BUILDINGS];
       if (!building) continue;
 
       const currentLevel = currentBuildings[buildingId] || 0;
-      if (currentLevel < 1) {
-        missing.push(building.name);
+      if (currentLevel < requiredLevel) {
+        missing.push(`${building.name} Level ${requiredLevel}`);
       }
     }
   }
 
   // Check research requirements
   if (requirements.research && requirements.research.length > 0) {
-    for (const researchId of requirements.research) {
+    for (const req of requirements.research) {
+      const researchId = typeof req === 'string' ? req : req.id;
+      const requiredLevel = typeof req === 'string' ? 1 : req.level || 1;
       const research = RESEARCH[researchId as keyof typeof RESEARCH];
       if (!research) continue;
 
       const currentLevel = currentResearch[researchId] || 0;
-      if (currentLevel < 1) {
-        missing.push(research.name);
+      if (currentLevel < requiredLevel) {
+        missing.push(`${research.name} Stufe ${requiredLevel}`);
       }
     }
   }

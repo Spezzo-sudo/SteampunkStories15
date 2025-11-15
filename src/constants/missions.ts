@@ -10,8 +10,8 @@ import { MissionType } from '@/types';
  * Requirements for launching a mission.
  */
 export interface MissionRequirements {
-  buildings?: string[];
-  research?: string[];
+  buildings?: Array<{ id: string; level?: number }>;
+  research?: Array<{ id: string; level?: number }>;
   minWerftLevel?: number;
 }
 
@@ -24,19 +24,22 @@ export interface MissionRequirements {
 export const MISSION_REQUIREMENTS: Record<MissionType, MissionRequirements> = {
   [MissionType.Spionage]: {
     buildings: [],
-    research: ['spionagetechnologie', 'observatoriumsnetz'],
+    research: [
+      { id: 'spionagetechnologie' },
+      { id: 'observatoriumsnetz' },
+    ],
     minWerftLevel: 1,
   },
 
   [MissionType.Stationierung]: {
     buildings: [],
-    research: ['panzerungstechnik'],
+    research: [{ id: 'panzerungstechnik' }],
     minWerftLevel: 1,
   },
 
   [MissionType.Angriff]: {
     buildings: [],
-    research: ['observatoriumsnetz'],
+    research: [{ id: 'observatoriumsnetz' }],
     minWerftLevel: 2,
   },
 
@@ -48,7 +51,7 @@ export const MISSION_REQUIREMENTS: Record<MissionType, MissionRequirements> = {
 
   [MissionType.Kolonisierung]: {
     buildings: [],
-    research: ['himmelsmechanik'],
+    research: [{ id: 'himmelsmechanik' }],
     minWerftLevel: 3,
   },
 };

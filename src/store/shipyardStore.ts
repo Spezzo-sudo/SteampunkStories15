@@ -178,6 +178,7 @@ export const useShipyardStore = create<ShipyardState & ShipyardActions>()(
           id: `ship-${blueprintId}-${Date.now()}`,
           blueprintId,
           quantity,
+          costPaid: cost, // FIXED: Store the actual cost paid (with werft bonus)
           startTime,
           endTime,
           status: 'queued',
@@ -206,7 +207,8 @@ export const useShipyardStore = create<ShipyardState & ShipyardActions>()(
           if (!blueprint) {
             return;
           }
-          refund = scaleCost(blueprint.baseCost, order.quantity);
+          // FIXED: Use the actual cost paid (with werft bonus) instead of base cost
+          refund = order.costPaid;
           blueprintName = blueprint.name;
           state.queue = state.queue.filter((entry) => entry.id !== orderId);
           rebuildQueuedSchedule(state.queue);

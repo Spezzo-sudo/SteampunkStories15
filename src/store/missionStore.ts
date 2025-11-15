@@ -235,7 +235,6 @@ export const useMissionStore = create<MissionState & MissionActions>()(
 useMissionStore.getState().syncOriginWithDirectory();
 
 useDirectoryStore.subscribe(
-  (state) => ({ systems: state.systems, currentPlayerId: state.currentPlayerId }),
   () => {
     useMissionStore.getState().syncOriginWithDirectory();
   },

@@ -590,7 +590,10 @@ export const SHIP_BLUEPRINTS: ShipBlueprint[] = [
     crew: 85,
     cargo: 800,
     requiredWerftLevel: 3,
-    requiredResearch: ['pulverProjektilkunde', 'dampfjet'],
+    requiredResearch: [
+      { id: 'pulverProjektilkunde' },
+      { id: 'dampfjet' },
+    ],
   },
   {
     id: 'aetherträger',
@@ -608,7 +611,10 @@ export const SHIP_BLUEPRINTS: ShipBlueprint[] = [
     crew: 160,
     cargo: 1200,
     requiredWerftLevel: 5,
-    requiredResearch: ['aethermotor', 'magnetfeldBarrieren'],
+    requiredResearch: [
+      { id: 'aethermotor' },
+      { id: 'magnetfeldBarrieren' },
+    ],
   },
 ];
 
