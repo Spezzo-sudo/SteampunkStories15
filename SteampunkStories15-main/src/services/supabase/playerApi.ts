@@ -30,6 +30,7 @@ export async function fetchOrCreatePlayerProfile(user: User): Promise<PlayerProf
     // Map database columns to PlayerProfile type
     return {
       uid: existingPlayer.user_id,
+      playerId: existingPlayer.id,
       name: existingPlayer.username,
       hasPlacedHome: existingPlayer.has_placed_home,
     };
@@ -67,6 +68,7 @@ export async function fetchOrCreatePlayerProfile(user: User): Promise<PlayerProf
   console.log('[playerApi] Successfully created player:', createdPlayer.id);
   return {
     uid: createdPlayer.user_id,
+    playerId: createdPlayer.id,
     name: createdPlayer.username,
     hasPlacedHome: createdPlayer.has_placed_home,
   };
@@ -130,6 +132,7 @@ export async function getPlayerProfile(uid: string): Promise<PlayerProfile | nul
 
   return {
     uid: data.user_id,
+    playerId: data.id,
     name: data.username,
     hasPlacedHome: data.has_placed_home,
   };

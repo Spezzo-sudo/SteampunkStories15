@@ -16,8 +16,10 @@ export type Biome =
 
 /** User profile tracking game-specific state. */
 export interface PlayerProfile {
-  /** Unique user identifier matching the auth record. */
+  /** Unique user identifier matching the auth record (user_id from auth). */
   uid: string;
+  /** Database player ID - used as foreign key for settlements/ships. */
+  playerId: string;
   /** Player display name. */
   name: string;
   /** True if the player has placed their first home settlement. */

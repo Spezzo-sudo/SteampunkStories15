@@ -32,6 +32,7 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
   // Store selectors
   const openBuildMenu = useMapStore((state) => state.openBuildMenu);
   const user = useSessionStore((state) => state.user);
+  const profile = useSessionStore((state) => state.profile);
   const {
     settlements,
     shipsBySettlement,
@@ -79,20 +80,20 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
   // Get available settlements with ships for scouting
   const availableSettlements = useMemo(() => {
     return settlements
-      .filter((s) => s.playerId === user?.id)
+      .filter((s) => s.playerId === profile?.playerId)
       .map((settlement) => ({
         settlement,
         availableShips: getAvailableShips(settlement.id),
       }))
       .filter(({ availableShips }) => availableShips.length > 0);
-  }, [settlements, user?.id, getAvailableShips]);
+  }, [settlements, profile?.playerId, getAvailableShips]);
 
   const handleSettleClick = () => {
     setShowSettlementModal(true);
   };
 
   const handleConfirmSettlement = async (settlementName: string) => {
-    if (!user?.id || !settlementName.trim()) {
+    if (!profile?.playerId || !settlementName.trim()) {
       setSettlementError('Fehler: Nutzerdaten oder Siedlungsname fehlen');
       return;
     }
@@ -103,7 +104,8 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
     setIsCreatingSettlement(true);
     setSettlementError(null);
     try {
-      const newSettlement = await createSettlement(user.id, tileId, settlementName.trim());
+      console.log('[TileActionPopup] Creating settlement with playerId:', profile.playerId, 'tileId:', tileId);
+      const newSettlement = await createSettlement(profile.playerId, tileId, settlementName.trim());
       if (newSettlement) {
         console.log(`Settlement created: ${newSettlement.name} (${newSettlement.id})`);
         // Close modal and refresh settlements
@@ -112,7 +114,7 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
         // Reload settlements in store
         const { loadSettlements } = useSettlementStore.getState?.() || {};
         if (loadSettlements) {
-          await loadSettlements(user.id);
+          await loadSettlements(profile.playerId);
         }
         onClose(); // Close tile popup to reflect changes
       } else {
@@ -268,7 +270,7 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
         </div>
 
         <div className="mt-4 flex flex-col gap-2">
-          {!hasSettlement && user?.id && (
+          {!hasSettlement && profile?.playerId && (
             <Button onClick={handleSettleClick} variant="primary">
               Siedeln
             </Button>
