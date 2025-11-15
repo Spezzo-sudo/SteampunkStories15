@@ -16,6 +16,8 @@ import type { PlayerProfile } from '@/data/types';
 export async function fetchOrCreatePlayerProfile(user: User): Promise<PlayerProfile> {
   const supabase = getSupabaseClient();
 
+  console.log('[playerApi] Fetching or creating player for user:', user.id);
+
   // Try to fetch existing player
   const { data: existingPlayer, error: fetchError } = await supabase
     .from('players')
@@ -24,6 +26,7 @@ export async function fetchOrCreatePlayerProfile(user: User): Promise<PlayerProf
     .single();
 
   if (existingPlayer) {
+    console.log('[playerApi] Found existing player:', existingPlayer.id);
     // Map database columns to PlayerProfile type
     return {
       uid: existingPlayer.user_id,
@@ -34,6 +37,8 @@ export async function fetchOrCreatePlayerProfile(user: User): Promise<PlayerProf
 
   // User doesn't exist in players table, create a new player
   const username = user.email?.split('@')[0] || user.id.substring(0, 8);
+
+  console.log('[playerApi] Creating new player for user:', user.id, 'with username:', username);
 
   const newPlayer = {
     user_id: user.id,
@@ -50,13 +55,16 @@ export async function fetchOrCreatePlayerProfile(user: User): Promise<PlayerProf
     .single();
 
   if (createError) {
+    console.error('[playerApi] Error creating player:', createError);
     throw new Error(`Failed to create player profile: ${createError.message}`);
   }
 
   if (!createdPlayer) {
+    console.error('[playerApi] No data returned after creating player');
     throw new Error('Failed to create player profile: No data returned');
   }
 
+  console.log('[playerApi] Successfully created player:', createdPlayer.id);
   return {
     uid: createdPlayer.user_id,
     name: createdPlayer.username,

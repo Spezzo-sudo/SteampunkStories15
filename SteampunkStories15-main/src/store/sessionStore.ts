@@ -61,11 +61,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   loadProfile: async (user) => {
     set({ loadingProfile: true, profileError: null });
     try {
+      console.log('[sessionStore] Loading profile for user:', user.id);
       const profile = await fetchOrCreatePlayerProfile(user);
+      console.log('[sessionStore] Profile loaded successfully:', profile);
       set({ profile, loadingProfile: false });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load profile';
+      console.error('[sessionStore] Failed to load profile:', errorMessage, error);
       set({ loadingProfile: false, profileError: errorMessage });
+      throw error;
     }
   },
 
