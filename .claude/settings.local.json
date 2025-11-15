@@ -1,19 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run typecheck:*)",
-      "Bash(npm install:*)",
-      "Bash(npm run seed:supabase:*)",
-      "Bash(npm run dev:*)",
-      "Bash(node debug-browser.mjs:*)",
-      "Bash(npx tsx:*)",
-      "Bash(find:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git config:*)",
-      "Bash(node test_scout_system.js:*)",
-      "Bash(npx tsc --noEmit)",
-      "Bash(git push:*)"
+      "Bash(ren:*)",
+      "Bash(powershell:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

@@ -10,6 +10,7 @@ const BIOMES = Object.keys(BIOME_STYLE) as Array<keyof typeof BIOME_STYLE>;
 
 const imageCache = new Map<string, HTMLImageElement>();
 const textureLoadPromises = new Map<string, Promise<HTMLImageElement>>();
+const texturePatternCache = new Map<string, CanvasPattern | null>();
 
 const loadTexture = (url: string): HTMLImageElement | null => {
   const cached = imageCache.get(url);
@@ -262,56 +263,69 @@ const drawRegion = (
     byBiome.set(tile.biome, list);
   });
 
-  const patternCache = new Map<string, CanvasPattern | null>();
-
+  const proceduralPatternCache = new Map<string, CanvasPattern | null>();
   let totalRenderedTiles = 0;
 
+  // Pre-load all textures first to ensure they're ready before rendering
+  const textureLoadPromises = Array.from(byBiome.keys()).map((biome) => {
+    const style = BIOME_STYLE[biome as keyof typeof BIOME_STYLE];
+    if (!style?.texture) return Promise.resolve();
+    return preloadTexture(style.texture).catch(() => {
+      // Continue even if texture fails to load
+    });
+  });
+
+  // Render only after all textures are requested (they load in background)
   byBiome.forEach((tiles, biome) => {
     const style = BIOME_STYLE[biome as keyof typeof BIOME_STYLE];
     if (!style) {
       console.warn(`[microRegion] Unknown biome: "${biome}", skipping... (${tiles.length} tiles)`);
       return;
     }
-    let pattern = patternCache.get(biome);
-    if (pattern === undefined) {
-      pattern = makePattern(ctx, style.pattern, style.edge, style.base, 0.08);
-      patternCache.set(biome, pattern);
+
+    // Load texture and create global pattern for this biome
+    let texturePattern: CanvasPattern | null = null;
+    if (style.texture) {
+      const texture = loadTexture(style.texture);
+
+      if (texture && !texturePatternCache.has(style.texture)) {
+        try {
+          texturePattern = ctx.createPattern(texture, 'repeat');
+          texturePatternCache.set(style.texture, texturePattern);
+          console.log(`[microRegion] Created texture pattern for ${biome}`);
+        } catch (error) {
+          console.warn(`[microRegion] Failed to create texture pattern for ${biome}:`, error);
+          texturePatternCache.set(style.texture, null);
+        }
+      } else if (texturePatternCache.has(style.texture)) {
+        texturePattern = texturePatternCache.get(style.texture)!;
+      }
     }
+
+    // Get procedural pattern overlay
+    let proceduralPattern = proceduralPatternCache.get(biome);
+    if (proceduralPattern === undefined) {
+      proceduralPattern = makePattern(ctx, style.pattern, style.edge, style.base, 0.08);
+      proceduralPatternCache.set(biome, proceduralPattern);
+    }
+
     tiles.forEach((tile) => {
       totalRenderedTiles++;
       const p = axialToPx(tile.q, tile.r, size);
       ctx.save();
       ctx.translate(p.x, p.y);
 
-      // Base color fill disabled - PNG textures are detailed enough and should be fully visible
-      // (was: Create radial gradient for depth instead of flat fill)
-      // const gradient = ctx.createRadialGradient(0, -size * 0.2, size * 0.15, 0, 0, size * 0.9);
-      // gradient.addColorStop(0, lightenColor(style.base, 0.12));
-      // gradient.addColorStop(1, darkenColor(style.base, 0.15));
-      // ctx.fillStyle = gradient;
-      // ctx.globalAlpha = 1;
-      // ctx.fill(hexPath(size - 1.2));
-
-      const texture = loadTexture(style.texture);
-      if (texture) {
-        ctx.save();
-        ctx.rotate(Math.PI / 2);  // Rotate 90° clockwise to correct texture orientation
-        ctx.globalAlpha = 0.75;  // Increased opacity to make PNG textures more dominant
-        try {
-          ctx.drawImage(texture, -size, -size, size * 2, size * 2);
-        } catch (error) {
-          // Texture is in broken state, skip drawing
-        }
-        ctx.restore();
+      // Apply seamless texture pattern (global, not centered on hex)
+      if (texturePattern) {
+        ctx.globalAlpha = 0.8;  // Texture opacity
+        ctx.fillStyle = texturePattern;
+        ctx.fill(hexPath(size - 1.2));
       }
-      // Always start preloading textures for next frame
-      preloadTexture(style.texture).catch(() => {
-        // Texture loading failed, but we'll continue without it
-      });
 
-      if (pattern) {
-        ctx.globalAlpha = 0.08;  // Subtle pattern overlay to not overpower PNG textures
-        ctx.fillStyle = pattern;
+      // Apply procedural pattern overlay
+      if (proceduralPattern) {
+        ctx.globalAlpha = 0.08;  // Subtle pattern overlay
+        ctx.fillStyle = proceduralPattern;
         ctx.fill(hexPath(size - 1.6));
       }
 

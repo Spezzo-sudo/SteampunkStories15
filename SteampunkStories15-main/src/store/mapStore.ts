@@ -39,6 +39,7 @@ interface MapActions {
   selectRegion: (region: Region) => Promise<void>;
   setRegion: (region: Region) => void;
   toggleAllianceFilter: () => void;
+  invalidateRegionCache: (regionId: string) => void;
 }
 
 const regionCache = new Map<string, Region | null>();
@@ -347,6 +348,12 @@ export const useMapStore = create(
         ensureWorldShell(state);
         state.world!.allianceFilterOn = !state.world!.allianceFilterOn;
       });
+    },
+
+    invalidateRegionCache: (regionId) => {
+      console.log('[mapStore] Invalidating cache for region:', regionId);
+      regionCache.delete(regionId);
+      pendingRegionLoads.delete(regionId);
     },
   })),
 );
