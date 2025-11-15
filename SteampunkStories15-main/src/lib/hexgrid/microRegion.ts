@@ -283,19 +283,20 @@ const drawRegion = (
       ctx.save();
       ctx.translate(p.x, p.y);
 
-      // Create radial gradient for depth instead of flat fill
-      const gradient = ctx.createRadialGradient(0, -size * 0.2, size * 0.15, 0, 0, size * 0.9);
-      gradient.addColorStop(0, lightenColor(style.base, 0.12));
-      gradient.addColorStop(1, darkenColor(style.base, 0.15));
-      ctx.fillStyle = gradient;
-      ctx.globalAlpha = 1;
-      ctx.fill(hexPath(size - 1.2));
+      // Base color fill disabled - PNG textures are detailed enough and should be fully visible
+      // (was: Create radial gradient for depth instead of flat fill)
+      // const gradient = ctx.createRadialGradient(0, -size * 0.2, size * 0.15, 0, 0, size * 0.9);
+      // gradient.addColorStop(0, lightenColor(style.base, 0.12));
+      // gradient.addColorStop(1, darkenColor(style.base, 0.15));
+      // ctx.fillStyle = gradient;
+      // ctx.globalAlpha = 1;
+      // ctx.fill(hexPath(size - 1.2));
 
       const texture = loadTexture(style.texture);
       if (texture) {
         ctx.save();
         ctx.rotate(Math.PI / 2);  // Rotate 90° clockwise to correct texture orientation
-        ctx.globalAlpha = 0.4;
+        ctx.globalAlpha = 0.75;  // Increased opacity to make PNG textures more dominant
         try {
           ctx.drawImage(texture, -size, -size, size * 2, size * 2);
         } catch (error) {
@@ -309,7 +310,7 @@ const drawRegion = (
       });
 
       if (pattern) {
-        ctx.globalAlpha = 0.20;
+        ctx.globalAlpha = 0.08;  // Subtle pattern overlay to not overpower PNG textures
         ctx.fillStyle = pattern;
         ctx.fill(hexPath(size - 1.6));
       }
