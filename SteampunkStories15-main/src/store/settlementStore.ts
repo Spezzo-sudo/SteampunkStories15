@@ -708,11 +708,12 @@ export const useSettlementStore = create<SettlementState & SettlementActions>()(
 
       // Find attack convoys that have arrived
       const arrivedConvoys = state.outgoingConvoys.filter(
-        (c) => c.playerId === playerId &&
-                c.missionType === 'attack' &&
-                c.status === 'en_route' &&
-                c.arrivalTime &&
-                c.arrivalTime <= now
+        (c) =>
+          c.playerId === playerId &&
+          c.missionType === 'attack' &&
+          c.status === 'en_route' &&
+          c.arrivalTime &&
+          c.arrivalTime <= now
       );
 
       arrivedConvoys.forEach((convoy) => {
@@ -721,9 +722,12 @@ export const useSettlementStore = create<SettlementState & SettlementActions>()(
           convoy.shipIds.includes(s.id)
         ) || [];
 
-        if (attackingShips.length === 0) return;
+        if (attackingShips.length === 0) {
+          console.warn(`progressAttackMissions: No attacking ships found for convoy ${convoy.id}`);
+          return;
+        }
 
-        // Get defending forces at target tile
+        // Get defending forces at target tile (null-safe)
         const defenderShips = state.stationedShipsByTile[convoy.targetTileId] || [];
 
         // Convert ships to combat format
@@ -732,6 +736,14 @@ export const useSettlementStore = create<SettlementState & SettlementActions>()(
 
         // Resolve combat with default terrain modifier (1.0)
         const combatResult = resolveCombat(attackerCombatShips, defenderCombatShips, 1.0, []);
+
+        // Map outcome to battle status (handle all 3 cases: attacker_victory, defender_victory, stalemate)
+        const battleStatus: 'attacker_won' | 'defender_won' | 'stalemate' =
+          combatResult.outcome === 'attacker_victory'
+            ? 'attacker_won'
+            : combatResult.outcome === 'defender_victory'
+              ? 'defender_won'
+              : 'stalemate';
 
         // Create battle record
         const battleId = `battle-${convoy.id}`;
@@ -743,7 +755,7 @@ export const useSettlementStore = create<SettlementState & SettlementActions>()(
           defenderSettlementId: undefined,
           tileId: convoy.targetTileId,
           convoyId: convoy.id,
-          status: combatResult.outcome === 'attacker_victory' ? 'attacker_won' : 'defender_won',
+          status: battleStatus,
           forces: {
             attackerShips: attackingShips,
             defenderShips: defenderShips,
@@ -767,6 +779,12 @@ export const useSettlementStore = create<SettlementState & SettlementActions>()(
 
         // Update surviving ships with damage
         set((state) => {
+          // Validate settlement exists before updating attacker ships
+          if (!state.shipsBySettlement[convoy.originSettlementId]) {
+            console.warn(`progressAttackMissions: Settlement ${convoy.originSettlementId} not found`);
+            return;
+          }
+
           // Update attacking ships
           attackingShips.forEach((ship) => {
             const survivor = combatResult.attackerSurvivors.find((s) => s.id === ship.id);
@@ -776,8 +794,10 @@ export const useSettlementStore = create<SettlementState & SettlementActions>()(
             if (shipIndex !== -1) {
               if (survivor) {
                 // Ship survived - update hull integrity
-                state.shipsBySettlement[convoy.originSettlementId][shipIndex].hullIntegrity = survivor.hullIntegrity;
-                state.shipsBySettlement[convoy.originSettlementId][shipIndex].status = survivor.hullIntegrity > 30 ? 'stationed' : 'damaged';
+                state.shipsBySettlement[convoy.originSettlementId][shipIndex].hullIntegrity =
+                  survivor.hullIntegrity;
+                state.shipsBySettlement[convoy.originSettlementId][shipIndex].status =
+                  survivor.hullIntegrity > 30 ? 'stationed' : 'damaged';
               } else {
                 // Ship was destroyed
                 state.shipsBySettlement[convoy.originSettlementId][shipIndex].status = 'destroyed';
@@ -787,23 +807,27 @@ export const useSettlementStore = create<SettlementState & SettlementActions>()(
             }
           });
 
-          // Update defending ships (if any survived)
-          defenderShips.forEach((ship) => {
-            const survivor = combatResult.defenderSurvivors.find((s) => s.id === ship.id);
-            const shipIndex = state.stationedShipsByTile[convoy.targetTileId].findIndex(
-              (s) => s.id === ship.id
-            );
-            if (shipIndex !== -1) {
-              if (survivor) {
-                // Ship survived - update hull integrity
-                state.stationedShipsByTile[convoy.targetTileId][shipIndex].hullIntegrity = survivor.hullIntegrity;
-                state.stationedShipsByTile[convoy.targetTileId][shipIndex].status = survivor.hullIntegrity > 30 ? 'stationed' : 'damaged';
-              } else {
-                // Ship was destroyed - remove from stationed
-                state.stationedShipsByTile[convoy.targetTileId].splice(shipIndex, 1);
+          // Update defending ships (if any exist)
+          if (defenderShips.length > 0 && state.stationedShipsByTile[convoy.targetTileId]) {
+            defenderShips.forEach((ship) => {
+              const survivor = combatResult.defenderSurvivors.find((s) => s.id === ship.id);
+              const shipIndex = state.stationedShipsByTile[convoy.targetTileId].findIndex(
+                (s) => s.id === ship.id
+              );
+              if (shipIndex !== -1) {
+                if (survivor) {
+                  // Ship survived - update hull integrity
+                  state.stationedShipsByTile[convoy.targetTileId][shipIndex].hullIntegrity =
+                    survivor.hullIntegrity;
+                  state.stationedShipsByTile[convoy.targetTileId][shipIndex].status =
+                    survivor.hullIntegrity > 30 ? 'stationed' : 'damaged';
+                } else {
+                  // Ship was destroyed - remove from stationed
+                  state.stationedShipsByTile[convoy.targetTileId].splice(shipIndex, 1);
+                }
               }
-            }
-          });
+            });
+          }
         });
 
         // Mark convoy as completed
@@ -811,6 +835,7 @@ export const useSettlementStore = create<SettlementState & SettlementActions>()(
           const convoyIndex = state.outgoingConvoys.findIndex((c) => c.id === convoy.id);
           if (convoyIndex !== -1) {
             state.outgoingConvoys[convoyIndex].status = 'completed';
+            state.outgoingConvoys[convoyIndex].endedAt = now;
           }
         });
       });

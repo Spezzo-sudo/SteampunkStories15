@@ -325,8 +325,12 @@ export const resolveCombat = (
  * Convert Ship objects to CombatShip snapshots.
  *
  * CombatShip is immutable and used for all combat calculations.
+ * Note: Crew count should come from Ship object if available, otherwise falls back to blueprint default.
  */
-export const shipToCombatShip = (ship: Ship, crewCount: number = 10): CombatShip => {
+export const shipToCombatShip = (ship: Ship & { crew?: number }, crewCount?: number): CombatShip => {
+  // Priority: explicit crewCount param > ship.crew property > default fallback
+  const finalCrewCount = crewCount ?? ship.crew ?? 10;
+
   return {
     id: ship.id,
     name: ship.name,
@@ -335,7 +339,7 @@ export const shipToCombatShip = (ship: Ship, crewCount: number = 10): CombatShip
     speed: ship.speed,
     cargoCapacity: ship.cargoCapacity,
     hullIntegrity: ship.hullIntegrity,
-    crew: crewCount, // TODO: Pull from database or blueprint
+    crew: finalCrewCount,
   };
 };
 

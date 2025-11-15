@@ -392,6 +392,7 @@ export interface MilitaryConvoy {
   preparationEndsAt: number;
   departureTime?: number;
   arrivalTime?: number;
+  endedAt?: number; // When mission was completed or cancelled
   createdAt: number;
 }
 
