@@ -1,14 +1,63 @@
 import React, { useCallback } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { BUILDINGS } from '@/constants';
-import GameCard from '@/components/ui/GameCard';
+import GameCard, { RequirementInfo } from '@/components/ui/GameCard';
 import { Building } from '@/types';
+import { canBuildOrUpgrade } from '@/lib/requirements';
+
+/**
+ * Builds requirement list for a building from its definition.
+ */
+const buildRequirementsList = (
+  building: Building,
+  currentResearch: Record<string, number>,
+  currentBuildings: Record<string, number>
+): RequirementInfo[] => {
+  if (!building.requires || building.requires.length === 0) {
+    return [];
+  }
+
+  return building.requires.map((req) => {
+    if (req.type === 'research') {
+      const researchName = (BUILDINGS as any)[req.id]?.name || req.id; // Note: req.id is research
+      const researchDef = Object.values(BUILDINGS).find((b) => (b as any).id === req.id);
+      const requiredLevel = req.level || 1;
+      const currentLevel = currentResearch[req.id] || 0;
+
+      return {
+        name: researchName,
+        required: `Stufe ${requiredLevel}`,
+        met: currentLevel >= requiredLevel,
+      };
+    } else if (req.type === 'building') {
+      const buildingName = BUILDINGS[req.id as keyof typeof BUILDINGS]?.name || req.id;
+      const requiredLevel = req.level || 1;
+      const currentLevel = currentBuildings[req.id] || 0;
+
+      return {
+        name: buildingName,
+        required: `Level ${requiredLevel}`,
+        met: currentLevel >= requiredLevel,
+      };
+    } else {
+      // Energy requirement
+      return {
+        name: 'Energiekapazität',
+        required: 'Verfügbar',
+        met: true,
+        blocked: false,
+      };
+    }
+  });
+};
 
 /**
  * Übersicht aller ausbaubaren Gebäude inklusive Upgrade-Kosten und Bauzeit.
  */
 const BuildingsView: React.FC = () => {
   const buildings = useGameStore((state) => state.buildings);
+  const research = useGameStore((state) => state.research);
+  const kesseldruck = useGameStore((state) => state.kesseldruck);
   const buildQueue = useGameStore((state) => state.buildQueue);
   const canAfford = useGameStore((state) => state.canAfford);
   const getUpgradeCost = useGameStore((state) => state.getUpgradeCost);
@@ -41,6 +90,16 @@ const BuildingsView: React.FC = () => {
           const isUpgrading = buildQueue.some((item) => item.entityId === building.id);
           const affordable = canAfford(costForNextUpgrade);
 
+          // UPDATED: Validate with canBuildOrUpgrade
+          const validation = canBuildOrUpgrade(
+            building.id,
+            nextLevel,
+            research,
+            buildings,
+            kesseldruck
+          );
+          const requirementsList = buildRequirementsList(building, research, buildings);
+
           return (
             <GameCard
               key={building.id}
@@ -53,6 +112,8 @@ const BuildingsView: React.FC = () => {
               upgradeCost={costForNextUpgrade}
               buildTime={buildTime}
               canAfford={affordable}
+              canUpgrade={validation.canDo}
+              requirements={requirementsList}
               onUpgrade={() => handleUpgrade(building)}
               isUpgrading={isUpgrading}
               queueLength={buildQueue.length}
