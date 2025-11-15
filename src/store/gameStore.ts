@@ -28,6 +28,11 @@ import {
   formatMissingResourceSummary,
 } from '@/lib/progression';
 import { computeQueueSlotTiming, hasQueueCapacity, partitionBuildQueue } from '@/lib/buildQueue';
+import {
+  canResearch,
+  canBuildOrUpgrade,
+  formatRequirementError,
+} from '@/lib/requirements';
 import { ToastVariant, useUiStore } from '@/store/uiStore';
 import { useMapStore } from '@/store/mapStore';
 
@@ -137,6 +142,37 @@ export const useGameStore = create<GameState & GameActions>()(
         const nextLevel = determineNextTargetLevel(state.buildQueue, entity.id, currentLevel);
         const cost = get().getUpgradeCost(entity, nextLevel);
         const queueHasCapacity = hasQueueCapacity(state.buildQueue, MAX_BUILD_QUEUE_LENGTH);
+
+        // NEW: Requirement validation
+        if (isBuilding) {
+          const validation = canBuildOrUpgrade(
+            entity.id,
+            nextLevel,
+            state.research,
+            state.buildings,
+            state.kesseldruck
+          );
+          if (!validation.canDo) {
+            const errorMsg = formatRequirementError(validation.missing);
+            toasts.push({
+              title: validation.energyBlocked ? 'Nicht genug Energie' : 'Anforderung nicht erfüllt',
+              description: errorMsg,
+              variant: ToastVariant.Warning,
+            });
+            return;
+          }
+        } else {
+          const validation = canResearch(entity.id, state.research, state.buildings);
+          if (!validation.canDo) {
+            const errorMsg = formatRequirementError(validation.missing);
+            toasts.push({
+              title: 'Anforderung nicht erfüllt',
+              description: errorMsg,
+              variant: ToastVariant.Warning,
+            });
+            return;
+          }
+        }
 
         if (!get().canAfford(cost)) {
           const missingResources = findMissingResources(state.resources, cost);

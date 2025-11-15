@@ -8,6 +8,7 @@ import {
   SHIP_BLUEPRINTS,
 } from '@/constants';
 import { Resources, ResourceType, ShipBlueprint, ShipBuildOrder } from '@/types';
+import { canBuildShip, formatRequirementError } from '@/lib/requirements';
 import { useGameStore } from '@/store/gameStore';
 import { ToastVariant, useUiStore } from '@/store/uiStore';
 
@@ -32,8 +33,21 @@ const scaleCost = (base: Resources, quantity: number): Resources => ({
   [ResourceType.Vitriol]: base[ResourceType.Vitriol] * quantity,
 });
 
-const calculateDuration = (blueprint: ShipBlueprint, quantity: number) =>
-  blueprint.buildTimeSeconds * 1000 * quantity;
+const calculateDuration = (blueprint: ShipBlueprint, quantity: number, werftLevel: number = 0) => {
+  // Base duration
+  const baseDuration = blueprint.buildTimeSeconds * 1000 * quantity;
+  // Apply werft level bonus: -5% build time per level
+  const timeMultiplier = 1 - werftLevel * 0.05;
+  return baseDuration * timeMultiplier;
+};
+
+/**
+ * Calculates cost multiplier based on werft level.
+ * -2% cost per werft level (better efficiency with higher werft levels).
+ */
+const getWerftCostMultiplier = (werftLevel: number): number => {
+  return 1 - werftLevel * 0.02;
+};
 
 const calculateReservedSlots = (orders: ShipBuildOrder[]) =>
   orders.reduce((acc, order) => {
@@ -97,6 +111,22 @@ export const useShipyardStore = create<ShipyardState & ShipyardActions>()(
           return;
         }
         const { pushToast } = useUiStore.getState();
+        const gameState = useGameStore.getState();
+        const werftLevel = gameState.buildings['werft'] || 0;
+        const research = gameState.research;
+
+        // NEW: Validate ship requirements
+        const validation = canBuildShip(blueprintId, werftLevel, research);
+        if (!validation.canDo) {
+          const errorMsg = formatRequirementError(validation.missing);
+          pushToast({
+            title: 'Schiff nicht verfügbar',
+            description: errorMsg,
+            variant: ToastVariant.Warning,
+          });
+          return;
+        }
+
         const reservedSlots = calculateReservedSlots(get().queue);
         const occupiedSlots = calculateInventorySlots(get().inventory);
         const requiredSlots = blueprint.hangarSlots * quantity;
@@ -116,8 +146,17 @@ export const useShipyardStore = create<ShipyardState & ShipyardActions>()(
           });
           return;
         }
-        const cost = scaleCost(blueprint.baseCost, quantity);
-        const spent = useGameStore.getState().spendResources(cost);
+
+        // NEW: Apply werft cost bonus
+        const baseCost = scaleCost(blueprint.baseCost, quantity);
+        const costMultiplier = getWerftCostMultiplier(werftLevel);
+        const cost: Resources = {
+          [ResourceType.Orichalkum]: Math.floor(baseCost[ResourceType.Orichalkum] * costMultiplier),
+          [ResourceType.Fokuskristalle]: Math.floor(baseCost[ResourceType.Fokuskristalle] * costMultiplier),
+          [ResourceType.Vitriol]: Math.floor(baseCost[ResourceType.Vitriol] * costMultiplier),
+        };
+
+        const spent = gameState.spendResources(cost);
         if (!spent) {
           pushToast({
             title: 'Ressourcen fehlen',
@@ -132,7 +171,8 @@ export const useShipyardStore = create<ShipyardState & ShipyardActions>()(
           .sort((a, b) => a.endTime - b.endTime);
         const lastEnd = activeOrders.length > 0 ? activeOrders[activeOrders.length - 1].endTime : now;
         const startTime = Math.max(now, lastEnd);
-        const duration = calculateDuration(blueprint, quantity);
+        // NEW: Apply werft time bonus
+        const duration = calculateDuration(blueprint, quantity, werftLevel);
         const endTime = startTime + duration;
         const order: ShipBuildOrder = {
           id: `ship-${blueprintId}-${Date.now()}`,

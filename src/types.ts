@@ -7,6 +7,15 @@ export enum ResourceType {
 export type Resources = Record<ResourceType, number>;
 export type Storage = Resources;
 
+/**
+ * Requirements for building construction or upgrade.
+ */
+export interface BuildingRequirement {
+  type: 'research' | 'building' | 'energy';
+  id: string;
+  level?: number;
+}
+
 export interface Building {
   id: string;
   name: string;
@@ -20,6 +29,9 @@ export interface Building {
   energyConsumptionMultiplier?: number;
   baseEnergySupply?: number;
   energySupplyMultiplier?: number;
+  maxLevel?: number;
+  requires?: BuildingRequirement[];
+  unlocks?: UnlockEffect[];
 }
 
 /**
@@ -64,6 +76,23 @@ export interface BuildQueueEntry {
   status: 'building' | 'completed' | 'cancelled';
 }
 
+/**
+ * Requirements for research completion.
+ */
+export interface ResearchRequirement {
+  type: 'research' | 'building';
+  id: string;
+  level?: number;
+}
+
+/**
+ * Unlock effects from completing research or buildings.
+ */
+export interface UnlockEffect {
+  type: 'building' | 'ship' | 'mission';
+  id: string;
+}
+
 export interface Research {
   id: string;
   name: string;
@@ -71,6 +100,9 @@ export interface Research {
   image: string;
   baseCost: Resources;
   costMultiplier: number;
+  maxLevel?: number;
+  requires?: ResearchRequirement[];
+  unlocks?: UnlockEffect[];
 }
 
 export interface ShipBlueprint {
@@ -84,6 +116,8 @@ export interface ShipBlueprint {
   buildTimeSeconds: number;
   crew: number;
   cargo: number;
+  requiredWerftLevel?: number;
+  requiredResearch?: string[];
 }
 
 /**

@@ -151,6 +151,11 @@ export const BUILDINGS: Record<string, Building> = {
     productionMultiplier: 1.0,
     baseEnergyConsumption: 20,
     energyConsumptionMultiplier: 1.15,
+    maxLevel: 20,
+    requires: [
+      { type: 'building', id: 'dampfkraftwerk', level: 1 },
+      { type: 'energy' }
+    ],
   },
 
   /**
@@ -167,6 +172,12 @@ export const BUILDINGS: Record<string, Building> = {
     productionMultiplier: 1.0,
     baseEnergyConsumption: 15,
     energyConsumptionMultiplier: 1.1,
+    maxLevel: 20,
+    requires: [
+      { type: 'research', id: 'kolbenAntrieb', level: 1 },
+      { type: 'building', id: 'dampfkraftwerk', level: 2 },
+      { type: 'energy' }
+    ],
   },
 };
 
@@ -203,10 +214,14 @@ export const RESEARCH: Record<string, Research> = {
   kesseldruckOptimierung: {
     id: 'kesseldruckOptimierung',
     name: 'Kesseldruck-Optimierung',
-    description: 'Steigert die Effizienz der Energieerzeugung und verringert den Energieverbrauch aller Gebäude.',
+    description: 'Steigert die Effizienz der Energieerzeugung und verringert den Energieverbrauch aller Gebäude. Mehrere Stufen für höhere Boni.',
     image: '/assets/illustrations/research/kesseldruck-optimierung.svg',
     baseCost: { [ResourceType.Orichalkum]: 200, [ResourceType.Fokuskristalle]: 200, [ResourceType.Vitriol]: 50 },
     costMultiplier: 2,
+    maxLevel: 3,
+    requires: [
+      { type: 'building', id: 'dampfkraftwerk', level: 2 }
+    ],
   },
   lichtbogenIngenieurwesen: {
     id: 'lichtbogenIngenieurwesen',
@@ -576,6 +591,8 @@ export const SHIP_BLUEPRINTS: ShipBlueprint[] = [
     buildTimeSeconds: 5400,
     crew: 85,
     cargo: 800,
+    requiredWerftLevel: 3,
+    requiredResearch: ['pulverProjektilkunde', 'dampfjet'],
   },
   {
     id: 'aetherträger',
@@ -592,6 +609,8 @@ export const SHIP_BLUEPRINTS: ShipBlueprint[] = [
     buildTimeSeconds: 7600,
     crew: 160,
     cargo: 1200,
+    requiredWerftLevel: 5,
+    requiredResearch: ['aethermotor', 'magnetfeldBarrieren'],
   },
 ];
 

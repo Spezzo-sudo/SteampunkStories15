@@ -3,9 +3,11 @@ import { immer } from 'zustand/middleware/immer';
 import { MISSION_PREPARATION_TIME } from '@/constants';
 import { buildMissionSchedule, getMissionTypeLabel } from '@/lib/missions';
 import { computeHexDistance, formatSystemCoordinate } from '@/lib/hex';
+import { canLaunchMission, formatRequirementError } from '@/lib/requirements';
 import { Mission, MissionStatus, MissionType } from '@/types';
 import { ToastVariant, useUiStore } from '@/store/uiStore';
 import { useDirectoryStore } from '@/store/directoryStore';
+import { useGameStore } from '@/store/gameStore';
 
 interface MissionState {
   missions: Mission[];
@@ -66,6 +68,21 @@ export const useMissionStore = create<MissionState & MissionActions>()(
 
     planMission: ({ targetPlanetId, missionType }) => {
       const directory = useDirectoryStore.getState();
+      const gameState = useGameStore.getState();
+      const { pushToast } = useUiStore.getState();
+
+      // NEW: Validate mission requirements
+      const validation = canLaunchMission(missionType, gameState.buildings, gameState.research);
+      if (!validation.canDo) {
+        const errorMsg = formatRequirementError(validation.missing);
+        pushToast({
+          title: 'Mission nicht möglich',
+          description: errorMsg,
+          variant: ToastVariant.Warning,
+        });
+        return;
+      }
+
       if (!get().originPlanetId) {
         const derived = deriveOriginFromDirectory();
         if (derived) {
@@ -77,7 +94,6 @@ export const useMissionStore = create<MissionState & MissionActions>()(
       }
       const originContext = resolvePlanet(get().originPlanetId);
       if (!originContext) {
-        const { pushToast } = useUiStore.getState();
         pushToast({
           title: 'Mission konnte nicht geplant werden',
           description: 'Es wurde kein Heimatplanet gefunden. Bitte wähle eine Quelle.',
@@ -87,7 +103,6 @@ export const useMissionStore = create<MissionState & MissionActions>()(
       }
       const targetContext = resolvePlanet(targetPlanetId);
       if (!originContext || !targetContext) {
-        const { pushToast } = useUiStore.getState();
         pushToast({
           title: 'Mission konnte nicht geplant werden',
           description: 'Quelle oder Zielplanet konnten nicht ermittelt werden.',
