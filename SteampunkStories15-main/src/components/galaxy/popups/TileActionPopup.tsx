@@ -7,8 +7,11 @@ import { Button } from '@/components/ui/Button';
 import { FleetSelector } from '@/components/galaxy/FleetSelector';
 import { StationingSelector } from '@/components/galaxy/StationingSelector';
 import { AttackSelector } from '@/components/galaxy/AttackSelector';
+import { ScoutSelector } from '@/components/galaxy/ScoutSelector';
 import { BattleReport } from '@/components/galaxy/BattleReport';
+import { SettlementNamePrompt } from '@/components/galaxy/SettlementNamePrompt';
 import { calculateScoutTravelTime } from '@/lib/scouting';
+import { createSettlement } from '@/services/supabase/settlementApi';
 import type { Tile } from '@/data/types';
 
 type TileActionPopupProps = {
@@ -58,6 +61,10 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
   const [selectedAttackShips, setSelectedAttackShips] = useState<string[]>([]);
   const [selectedSettlementForAttack, setSelectedSettlementForAttack] = useState<string | null>(null);
 
+  // Settlement creation modal state
+  const [showSettlementModal, setShowSettlementModal] = useState(false);
+  const [isCreatingSettlement, setIsCreatingSettlement] = useState(false);
+
   // Battle report state
   const [activeBattle, setActiveBattle] = useState(getBattlesByTile(tile.id)[0] || null);
 
@@ -78,6 +85,34 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
       }))
       .filter(({ availableShips }) => availableShips.length > 0);
   }, [settlements, user?.id, getAvailableShips]);
+
+  const handleSettleClick = () => {
+    setShowSettlementModal(true);
+  };
+
+  const handleConfirmSettlement = async (settlementName: string) => {
+    if (!user?.id || !tile.id || !settlementName.trim()) return;
+
+    setIsCreatingSettlement(true);
+    try {
+      const newSettlement = await createSettlement(user.id, tile.id, settlementName.trim());
+      if (newSettlement) {
+        console.log(`Settlement created: ${newSettlement.name} (${newSettlement.id})`);
+        // Close modal and refresh settlements
+        setShowSettlementModal(false);
+        // Reload settlements in store
+        const { loadSettlements } = useSettlementStore.getState?.() || {};
+        if (loadSettlements) {
+          await loadSettlements(user.id);
+        }
+        onClose(); // Close tile popup to reflect changes
+      }
+    } catch (err) {
+      console.error('Error creating settlement:', err);
+    } finally {
+      setIsCreatingSettlement(false);
+    }
+  };
 
   const handleBuildClick = () => {
     openBuildMenu(tile);
@@ -191,6 +226,11 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
     ? getAvailableShips(selectedSettlementForAttack)
     : [];
 
+  const handleTransportClick = () => {
+    // TODO: Phase C - Transport missions not yet implemented
+    console.log('Transport feature coming soon in Phase C');
+  };
+
   return (
     <>
       <div className="absolute bottom-4 right-4 z-20 w-72 rounded-lg border border-slate-700 bg-slate-900/90 p-4 shadow-lg backdrop-blur-sm max-h-96 overflow-y-auto">
@@ -215,6 +255,11 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
         </div>
 
         <div className="mt-4 flex flex-col gap-2">
+          {!hasSettlement && user?.id && (
+            <Button onClick={handleSettleClick} variant="primary">
+              Siedeln
+            </Button>
+          )}
           {isOwnedByPlayer && (
             <>
               <Button onClick={handleBuildClick} variant="primary">
@@ -237,7 +282,7 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
               </Button>
             </>
           )}
-          <Button onClick={() => console.log('Transport initiated')} variant="secondary">
+          <Button onClick={handleTransportClick} variant="secondary">
             Transport
           </Button>
         </div>
@@ -284,7 +329,7 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
 
       {/* Scout Modal */}
       {showScoutModal && selectedSettlementForScout && (
-        <FleetSelector
+        <ScoutSelector
           ships={selectedSettlementShips}
           selectedShips={selectedScoutShips}
           onShipsChange={setSelectedScoutShips}
@@ -294,8 +339,7 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
             setSelectedScoutShips([]);
             setSelectedSettlementForScout(null);
           }}
-          title="Auskundschafter wählen"
-          minShips={1}
+          title="Aufklärungsschiff wählen"
         />
       )}
 
@@ -338,6 +382,16 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
         <BattleReport
           battle={activeBattle}
           onClose={() => setActiveBattle(null)}
+        />
+      )}
+
+      {/* Settlement Creation Modal */}
+      {showSettlementModal && (
+        <SettlementNamePrompt
+          onConfirm={handleConfirmSettlement}
+          onCancel={() => setShowSettlementModal(false)}
+          isLoading={isCreatingSettlement}
+          tileCoordinates={`${tile.q},${tile.r}`}
         />
       )}
     </>

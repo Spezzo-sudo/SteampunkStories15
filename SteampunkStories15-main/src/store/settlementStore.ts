@@ -21,6 +21,7 @@ import {
   calculatePlunder,
   formatCombatReport,
 } from '@/lib/combat';
+import { getPlayerSettlements } from '@/services/supabase/settlementApi';
 
 /**
  * Settlement state management for multi-settlement military system.
@@ -156,10 +157,10 @@ export const useSettlementStore = create<SettlementState & SettlementActions>()(
       });
 
       try {
-        // TODO: Call settlementApi.getPlayerSettlements(playerId)
-        // For now, this is a placeholder for the API integration
+        const playerSettlements = await getPlayerSettlements(playerId);
 
         set((state) => {
+          state.settlements = playerSettlements;
           state.isLoadingSettlements = false;
         });
       } catch (err) {
