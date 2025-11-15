@@ -22,6 +22,48 @@ export interface Building {
   energySupplyMultiplier?: number;
 }
 
+/**
+ * Configuration for a settlement building type (immutable reference data).
+ */
+export interface BuildingConfig {
+  buildingType: string;
+  displayName: string;
+  description?: string;
+  sizePerLevel: number; // Capacity cost per building level
+  maxLevel?: number; // Max level allowed, null = unlimited
+  productionType?: 'orichalkum' | 'fokuskristalle' | 'vitriol' | 'energy' | null; // null for storage/utility
+}
+
+/**
+ * A settlement-specific building instance.
+ */
+export interface SettlementBuilding {
+  id: string;
+  settlementId: string;
+  buildingType: string;
+  level: number;
+  createdAt: number;
+  lastUpgradedAt?: number;
+}
+
+/**
+ * A queued building construction/upgrade.
+ */
+export interface BuildQueueEntry {
+  id: string;
+  settlementId: string;
+  settlementBuildingId?: string;
+  buildingType: string;
+  targetLevel: number;
+  costOrichalkum: number;
+  costFokuskristalle: number;
+  costVitriol: number;
+  startedAt: number;
+  durationSeconds: number;
+  completedAt?: number;
+  status: 'building' | 'completed' | 'cancelled';
+}
+
 export interface Research {
   id: string;
   name: string;
@@ -36,7 +78,7 @@ export interface ShipBlueprint {
   name: string;
   description: string;
   image: string;
-  role: 'Aufklärung' | 'Transport' | 'Angriff' | 'Unterstützung';
+  role: 'Aufklärung' | 'Transport' | 'Angriff' | 'Unterstützung' | 'Kolonisation';
   hangarSlots: number;
   baseCost: Resources;
   buildTimeSeconds: number;

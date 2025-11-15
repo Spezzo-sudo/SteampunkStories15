@@ -3,6 +3,8 @@ import React, { useState, useMemo } from 'react';
 import { useMapStore } from '@/store/mapStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettlementStore } from '@/store/settlementStore';
+import { fetchRegion } from '@/services/supabase/gameApi';
+import { updatePlayerProfile } from '@/services/supabase/playerApi';
 import { Button } from '@/components/ui/Button';
 import { FleetSelector } from '@/components/galaxy/FleetSelector';
 import { StationingSelector } from '@/components/galaxy/StationingSelector';
@@ -88,7 +90,18 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
       .filter(({ availableShips }) => availableShips.length > 0);
   }, [settlements, profile?.playerId, getAvailableShips]);
 
+  // Check if player has a Kolonistenschiff (colonial ship) for settlement
+  const hasColonialShip = useMemo(() => {
+    return availableSettlements.some((s) =>
+      s.availableShips.some((ship) => ship.blueprintId === 'kolonistenschiff')
+    );
+  }, [availableSettlements]);
+
   const handleSettleClick = () => {
+    if (!hasColonialShip) {
+      setSettlementError('Benötigt: Kolonistenschiff in einer deiner Siedlungen');
+      return;
+    }
     setShowSettlementModal(true);
   };
 
@@ -111,11 +124,43 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
         // Close modal and refresh settlements
         setShowSettlementModal(false);
         setSettlementError(null);
+
+        // Mark home planet as placed (first settlement)
+        if (!profile.hasPlacedHome) {
+          console.log('[TileActionPopup] Marking home planet as placed');
+          try {
+            await updatePlayerProfile(profile.uid, { hasPlacedHome: true });
+          } catch (updateError) {
+            console.error('[TileActionPopup] Error updating player profile:', updateError);
+          }
+        }
+
         // Reload settlements in store
         const { loadSettlements } = useSettlementStore.getState?.() || {};
         if (loadSettlements) {
           await loadSettlements(profile.playerId);
         }
+
+        // Invalidate and reload region cache to show settlement on map
+        const { invalidateRegionCache, worldId } = useMapStore.getState();
+        console.log('[TileActionPopup] Invalidating region cache for region:', tile.regionId);
+        invalidateRegionCache(tile.regionId);
+
+        // Reload the region with updated tile data
+        try {
+          if (worldId) {
+            const updatedRegion = await fetchRegion(worldId, tile.regionId);
+            if (updatedRegion) {
+              const { setRegion } = useMapStore.getState();
+              setRegion(updatedRegion);
+              console.log('[TileActionPopup] Region reloaded with settlement data');
+            }
+          }
+        } catch (regionError) {
+          console.error('[TileActionPopup] Error reloading region:', regionError);
+          // Continue anyway - settlement was created
+        }
+
         onClose(); // Close tile popup to reflect changes
       } else {
         setSettlementError('Siedlung konnte nicht erstellt werden (leere Antwort)');
@@ -271,8 +316,13 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
 
         <div className="mt-4 flex flex-col gap-2">
           {!hasSettlement && profile?.playerId && (
-            <Button onClick={handleSettleClick} variant="primary">
-              Siedeln
+            <Button
+              onClick={handleSettleClick}
+              variant={hasColonialShip ? 'primary' : 'secondary'}
+              disabled={!hasColonialShip}
+              title={!hasColonialShip ? 'Benötigt: Kolonistenschiff' : 'Neue Siedlung gründen'}
+            >
+              {hasColonialShip ? 'Siedeln' : 'Siedeln (Kolonistenschiff benötigt)'}
             </Button>
           )}
           {isOwnedByPlayer && (
