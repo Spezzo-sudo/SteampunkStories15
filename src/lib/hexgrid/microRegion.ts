@@ -9,44 +9,16 @@ import { BIOME_STYLE, makePattern } from './patterns';
 const BIOMES = Object.keys(BIOME_STYLE) as Array<keyof typeof BIOME_STYLE>;
 
 const imageCache = new Map<string, HTMLImageElement>();
-const textureLoadPromises = new Map<string, Promise<HTMLImageElement>>();
-const texturePatternCache = new Map<string, CanvasPattern | null>();
 
-const loadTexture = (url: string): HTMLImageElement | null => {
-  const cached = imageCache.get(url);
-  if (cached && cached.complete) {
-    return cached;
+const loadTexture = (url: string): HTMLImageElement => {
+  let img = imageCache.get(url);
+  if (img) {
+    return img;
   }
-  return null; // Return null if not loaded yet
-};
-
-const preloadTexture = (url: string): Promise<HTMLImageElement> => {
-  if (imageCache.has(url)) {
-    const img = imageCache.get(url)!;
-    if (img.complete) {
-      return Promise.resolve(img);
-    }
-  }
-
-  if (textureLoadPromises.has(url)) {
-    return textureLoadPromises.get(url)!;
-  }
-
-  const promise = new Promise<HTMLImageElement>((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      imageCache.set(url, img);
-      resolve(img);
-    };
-    img.onerror = () => {
-      console.warn(`[microRegion] Failed to load texture: ${url}`);
-      reject(new Error(`Failed to load texture: ${url}`));
-    };
-    img.src = url;
-  });
-
-  textureLoadPromises.set(url, promise);
-  return promise;
+  img = new Image();
+  img.src = url;
+  imageCache.set(url, img);
+  return img;
 };
 
 /**
@@ -270,9 +242,9 @@ const drawRegion = (
   const textureLoadPromises = Array.from(byBiome.keys()).map((biome) => {
     const style = BIOME_STYLE[biome as keyof typeof BIOME_STYLE];
     if (!style?.texture) return Promise.resolve();
-    return preloadTexture(style.texture).catch(() => {
-      // Continue even if texture fails to load
-    });
+    // Request texture once so it starts downloading
+    loadTexture(style.texture);
+    return Promise.resolve();
   });
 
   // Render only after all textures are requested (they load in background)
@@ -283,23 +255,9 @@ const drawRegion = (
       return;
     }
 
-    // Load texture and create global pattern for this biome
-    let texturePattern: CanvasPattern | null = null;
+    let texture: HTMLImageElement | null = null;
     if (style.texture) {
-      const texture = loadTexture(style.texture);
-
-      if (texture && !texturePatternCache.has(style.texture)) {
-        try {
-          texturePattern = ctx.createPattern(texture, 'repeat');
-          texturePatternCache.set(style.texture, texturePattern);
-          console.log(`[microRegion] Created texture pattern for ${biome}`);
-        } catch (error) {
-          console.warn(`[microRegion] Failed to create texture pattern for ${biome}:`, error);
-          texturePatternCache.set(style.texture, null);
-        }
-      } else if (texturePatternCache.has(style.texture)) {
-        texturePattern = texturePatternCache.get(style.texture)!;
-      }
+      texture = loadTexture(style.texture);
     }
 
     // Get procedural pattern overlay
@@ -310,16 +268,14 @@ const drawRegion = (
     }
 
     tiles.forEach((tile) => {
-      totalRenderedTiles++;
+      totalRenderedTiles += 1;
       const p = axialToPx(tile.q, tile.r, size);
       ctx.save();
       ctx.translate(p.x, p.y);
 
-      // Apply seamless texture pattern (global, not centered on hex)
-      if (texturePattern) {
-        ctx.globalAlpha = 0.8;  // Texture opacity
-        ctx.fillStyle = texturePattern;
-        ctx.fill(hexPath(size - 1.2));
+      if (texture && texture.complete) {
+        ctx.globalAlpha = 1;
+        ctx.drawImage(texture, -size + 2, -size + 2, size * 1.9, size * 1.9);
       }
 
       // Apply procedural pattern overlay
