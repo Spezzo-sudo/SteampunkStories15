@@ -619,6 +619,13 @@ export const SHIP_BLUEPRINTS: ShipBlueprint[] = [
 ];
 
 /**
+ * Map of ship blueprints by ID for O(1) lookup performance.
+ */
+export const SHIP_BLUEPRINTS_MAP = new Map(
+  SHIP_BLUEPRINTS.map((ship) => [ship.id, ship])
+);
+
+/**
  * Preparation window applied before any fleet leaves the hangar, measured in milliseconds.
  */
 export const MISSION_PREPARATION_TIME = 5 * 60 * 1000;

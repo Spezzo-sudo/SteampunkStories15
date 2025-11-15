@@ -13,7 +13,7 @@ import type {
   ShipBlueprint,
   MissionType,
 } from '@/types';
-import { BUILDINGS, RESEARCH, SHIP_BLUEPRINTS } from '@/constants';
+import { BUILDINGS, RESEARCH, SHIP_BLUEPRINTS_MAP } from '@/constants';
 import { MISSION_REQUIREMENTS } from '@/constants/missions';
 
 /**
@@ -167,7 +167,7 @@ export const canBuildShip = (
   werftLevel: number,
   currentResearch: Record<string, number>
 ): ValidationResult => {
-  const ship = SHIP_BLUEPRINTS.find((b) => b.id === shipId);
+  const ship = SHIP_BLUEPRINTS_MAP.get(shipId);
   if (!ship) {
     return { canDo: false, missing: ['Schiff nicht gefunden'] };
   }

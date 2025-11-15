@@ -6,6 +6,7 @@ import {
   INITIAL_HANGAR_CAPACITY,
   MAX_SHIPYARD_QUEUE,
   SHIP_BLUEPRINTS,
+  SHIP_BLUEPRINTS_MAP,
 } from '@/constants';
 import { Resources, ResourceType, ShipBlueprint, ShipBuildOrder } from '@/types';
 import { canBuildShip, formatRequirementError } from '@/lib/requirements';
@@ -25,7 +26,7 @@ interface ShipyardActions {
 }
 
 const findBlueprint = (blueprintId: string): ShipBlueprint | undefined =>
-  SHIP_BLUEPRINTS.find((entry) => entry.id === blueprintId);
+  SHIP_BLUEPRINTS_MAP.get(blueprintId);
 
 const scaleCost = (base: Resources, quantity: number): Resources => ({
   [ResourceType.Orichalkum]: base[ResourceType.Orichalkum] * quantity,
