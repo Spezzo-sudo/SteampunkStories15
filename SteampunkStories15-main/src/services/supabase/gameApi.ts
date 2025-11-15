@@ -52,6 +52,7 @@ export const fetchRegion = async (worldId: string, regionId: string): Promise<Re
       RQ: regionData.rq,
       RR: regionData.rr,
       tiles: (tilesData || []).map((tileRow) => ({
+        id: tileRow.id ?? `${regionId}:${tileRow.q},${tileRow.r}`,
         q: tileRow.q,
         r: tileRow.r,
         biome: tileRow.biome,

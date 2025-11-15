@@ -96,6 +96,7 @@ export const generateRegionTiles = (regionId: string, allianceId?: string) => {
     const settlement = seed % 7 === 0 ? { playerId: `player-${regionId}-${seed}`, icon: seed % 2 === 0 ? 'TOWN' : 'OUTPOST' } : undefined;
     const tileAlliance = allianceId && seed % 5 !== 1 ? allianceId : undefined;
     return {
+      id: `${regionId}:${ax.q},${ax.r}`,
       q: ax.q,
       r: ax.r,
       biome,

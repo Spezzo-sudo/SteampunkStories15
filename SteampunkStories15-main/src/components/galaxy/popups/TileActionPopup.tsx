@@ -92,15 +92,18 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
   };
 
   const handleConfirmSettlement = async (settlementName: string) => {
-    if (!user?.id || !tile.id || !settlementName.trim()) {
-      setSettlementError('Fehler: Nutzerdaten oder Flächenkoordinaten fehlen');
+    if (!user?.id || !settlementName.trim()) {
+      setSettlementError('Fehler: Nutzerdaten oder Siedlungsname fehlen');
       return;
     }
+
+    // Use tile.id, fallback to composite key if not present
+    const tileId = tile.id ?? `${tile.regionId}:${tile.q},${tile.r}`;
 
     setIsCreatingSettlement(true);
     setSettlementError(null);
     try {
-      const newSettlement = await createSettlement(user.id, tile.id, settlementName.trim());
+      const newSettlement = await createSettlement(user.id, tileId, settlementName.trim());
       if (newSettlement) {
         console.log(`Settlement created: ${newSettlement.name} (${newSettlement.id})`);
         // Close modal and refresh settlements

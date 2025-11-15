@@ -34,6 +34,8 @@ export interface Settlement {
 
 /** Tile metadata for the micro region map. */
 export type Tile = Ax & {
+  /** Unique tile identifier (from DB or composite key). */
+  id: string;
   /** Biome code displayed for the tile. */
   biome: Biome;
   /** Parent region identifier. */
