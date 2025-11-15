@@ -1,0 +1,27 @@
+{
+  "regionId": "0_0",
+  "RQ": 0,
+  "RR": 0,
+  "radius": 2,
+  "tiles": [
+    { "q": 0, "r": 0, "biome": "Steppe", "settleable": true, "poi": ["Kupferquelle"], "allianceId": "alliance-1" },
+    { "q": 1, "r": 0, "biome": "Wald", "settleable": true, "allianceId": "alliance-2" },
+    { "q": 1, "r": -1, "biome": "Hochland", "settleable": true, "allianceId": "alliance-2" },
+    { "q": 0, "r": -1, "biome": "Dampfwiese", "settleable": true, "allianceId": "alliance-3" },
+    { "q": -1, "r": 0, "biome": "Moor", "settleable": false, "poi": ["Alte Pumpstation"], "allianceId": "alliance-4" },
+    { "q": -1, "r": 1, "biome": "Wald", "settleable": true, "allianceId": "alliance-1" },
+    { "q": 0, "r": 1, "biome": "Steppe", "settleable": true, "allianceId": "alliance-1" },
+    { "q": 1, "r": 1, "biome": "Kristallufer", "settleable": true, "allianceId": "alliance-5" },
+    { "q": 2, "r": 0, "biome": "Rußklippen", "settleable": false },
+    { "q": 2, "r": -1, "biome": "Ödland", "settleable": false },
+    { "q": 1, "r": -2, "biome": "Hochland", "settleable": true, "allianceId": "alliance-3" },
+    { "q": 0, "r": -2, "biome": "Steppe", "settleable": true },
+    { "q": -1, "r": -1, "biome": "Moor", "settleable": false },
+    { "q": -2, "r": 0, "biome": "Rußklippen", "settleable": false },
+    { "q": -2, "r": 1, "biome": "Ödland", "settleable": false },
+    { "q": -1, "r": 2, "biome": "Wald", "settleable": true, "allianceId": "alliance-5" },
+    { "q": 0, "r": 2, "biome": "Dampfwiese", "settleable": true, "allianceId": "alliance-6" },
+    { "q": 1, "r": 2, "biome": "Kristallufer", "settleable": true, "allianceId": "alliance-6" },
+    { "q": 2, "r": -2, "biome": "Steppe", "settleable": true }
+  ]
+}
