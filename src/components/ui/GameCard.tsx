@@ -1,6 +1,14 @@
 import React from 'react';
 import { Resources, ResourceType } from '@/types';
 import { MAX_BUILD_QUEUE_LENGTH } from '@/constants';
+import RequirementBadge from './RequirementBadge';
+
+export interface RequirementInfo {
+  name: string;
+  required: string;
+  met: boolean;
+  blocked?: boolean;
+}
 
 interface GameCardProps {
   name: string;
@@ -12,9 +20,11 @@ interface GameCardProps {
   upgradeCost: Resources;
   buildTime: number;
   canAfford: boolean;
+  canUpgrade: boolean; // NEW: Whether all requirements are met
   onUpgrade: () => void;
   isUpgrading: boolean;
   queueLength: number;
+  requirements?: RequirementInfo[]; // NEW: List of requirements to display
   meta?: React.ReactNode;
 }
 
@@ -65,13 +75,16 @@ const GameCard: React.FC<GameCardProps> = ({
   upgradeCost,
   buildTime,
   canAfford,
+  canUpgrade,
   onUpgrade,
   isUpgrading,
   queueLength,
+  requirements,
   meta,
 }) => {
   const queueIsFull = queueLength >= MAX_BUILD_QUEUE_LENGTH;
   const showResourceWarning = !canAfford;
+  const canClick = canUpgrade && canAfford && !queueIsFull;
 
   let buttonLabel = 'Ausbauen';
   if (isUpgrading) {
@@ -79,6 +92,9 @@ const GameCard: React.FC<GameCardProps> = ({
   }
   if (queueIsFull) {
     buttonLabel = `Warteschlange voll (${MAX_BUILD_QUEUE_LENGTH})`;
+  }
+  if (!canUpgrade) {
+    buttonLabel = 'Anforderungen nicht erfüllt';
   }
 
   return (
@@ -110,6 +126,23 @@ const GameCard: React.FC<GameCardProps> = ({
       </header>
       <div className="flex-1 space-y-3">
         <p className="text-sm leading-relaxed text-gray-300">{description}</p>
+        {requirements && requirements.length > 0 && (
+          <div className="space-y-2 pt-2">
+            <p className="text-xs font-semibold text-gray-300">Anforderungen:</p>
+            <div className="space-y-1">
+              {requirements.map((req, idx) => (
+                <RequirementBadge
+                  key={idx}
+                  name={req.name}
+                  required={req.required}
+                  met={req.met}
+                  blocked={req.blocked}
+                  compact
+                />
+              ))}
+            </div>
+          </div>
+        )}
         {meta}
       </div>
       <footer className="mt-4 space-y-3 text-center">
@@ -124,9 +157,9 @@ const GameCard: React.FC<GameCardProps> = ({
         <button
           type="button"
           onClick={onUpgrade}
-          disabled={queueIsFull}
+          disabled={!canClick}
           className={`w-full rounded-md px-4 py-2 font-cinzel text-sm uppercase tracking-wide transition-colors ${
-            queueIsFull
+            !canClick
               ? 'cursor-not-allowed bg-gray-700 text-gray-400'
               : 'steampunk-button'
           }`}
