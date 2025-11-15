@@ -1,7 +1,6 @@
 import type { HomeSelection, Region, Tile } from '@/data/types';
 import { buildAllianceMap } from '@/data/factions';
 import { CONFIG } from '@/config/mapConfig';
-import { traceTextureEvent } from '@/lib/debug/textureTracer';
 import { DIRS, axialToPx, disk, hexCorner, hexPath, key } from './hex';
 import type { Camera } from './viewport';
 import { boundsOf, fitToBounds, strokePx } from './viewport';
@@ -10,27 +9,70 @@ import { BIOME_STYLE, makePattern } from './patterns';
 const BIOMES = Object.keys(BIOME_STYLE) as Array<keyof typeof BIOME_STYLE>;
 
 const imageCache = new Map<string, HTMLImageElement>();
+const textureLoadPromises = new Map<string, Promise<HTMLImageElement>>();
+const texturePatternCache = new Map<string, CanvasPattern | null>();
 
-const loadTexture = (url: string) => {
-  let img = imageCache.get(url);
-  if (img) {
-    if (img.complete) {
-      traceTextureEvent(url, 'cached');
-    }
-    return img;
+const loadTexture = (url: string): HTMLImageElement | null => {
+  const cached = imageCache.get(url);
+  if (cached && cached.complete) {
+    return cached;
   }
-  img = new Image();
-  traceTextureEvent(url, 'requested');
-  img.onload = () => {
-    traceTextureEvent(url, 'loaded');
-  };
-  img.onerror = () => {
-    console.warn(`[microRegion] Failed to load texture: ${url}`);
-    traceTextureEvent(url, 'failed');
-  };
-  img.src = url;
-  imageCache.set(url, img);
-  return img;
+  return null; // Return null if not loaded yet
+};
+
+const preloadTexture = (url: string): Promise<HTMLImageElement> => {
+  if (imageCache.has(url)) {
+    const img = imageCache.get(url)!;
+    if (img.complete) {
+      return Promise.resolve(img);
+    }
+  }
+
+  if (textureLoadPromises.has(url)) {
+    return textureLoadPromises.get(url)!;
+  }
+
+  const promise = new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      imageCache.set(url, img);
+      resolve(img);
+    };
+    img.onerror = () => {
+      console.warn(`[microRegion] Failed to load texture: ${url}`);
+      reject(new Error(`Failed to load texture: ${url}`));
+    };
+    img.src = url;
+  });
+
+  textureLoadPromises.set(url, promise);
+  return promise;
+};
+
+/**
+ * Lighten a hex color by a specified amount (0-1).
+ * @param hex - Hex color code (e.g., '#ff0000')
+ * @param amount - Lightening amount (0-1)
+ */
+const lightenColor = (hex: string, amount: number): string => {
+  const rgb = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, Math.floor((rgb >> 16) + 255 * amount));
+  const g = Math.min(255, Math.floor(((rgb >> 8) & 255) + 255 * amount));
+  const b = Math.min(255, Math.floor((rgb & 255) + 255 * amount));
+  return `rgb(${r},${g},${b})`;
+};
+
+/**
+ * Darken a hex color by a specified amount (0-1).
+ * @param hex - Hex color code (e.g., '#ff0000')
+ * @param amount - Darkening amount (0-1)
+ */
+const darkenColor = (hex: string, amount: number): string => {
+  const rgb = parseInt(hex.slice(1), 16);
+  const r = Math.max(0, Math.floor((rgb >> 16) * (1 - amount)));
+  const g = Math.max(0, Math.floor(((rgb >> 8) & 255) * (1 - amount)));
+  const b = Math.max(0, Math.floor((rgb & 255) * (1 - amount)));
+  return `rgb(${r},${g},${b})`;
 };
 
 const drawHomeEmblem = (
@@ -81,6 +123,7 @@ export const generateRegionTiles = (regionId: string, allianceId?: string) => {
     const settlement = seed % 7 === 0 ? { playerId: `player-${regionId}-${seed}`, icon: seed % 2 === 0 ? 'TOWN' : 'OUTPOST' } : undefined;
     const tileAlliance = allianceId && seed % 5 !== 1 ? allianceId : undefined;
     return {
+      id: `${regionId}:${ax.q},${ax.r}`,
       q: ax.q,
       r: ax.r,
       biome,
@@ -170,6 +213,10 @@ export const regionHull = (region: Region, size: number) => {
 
 export const fitMicroView = (cam: Camera, region: Region, width: number, height: number) => {
   const { bounds } = regionHull(region, CONFIG.microHexSizePx);
+
+  const boundWidth = bounds.maxX - bounds.minX;
+  const boundHeight = bounds.maxY - bounds.minY;
+
   fitToBounds(cam, bounds, width, height, CONFIG.paddingPx * 2);
 };
 
@@ -216,43 +263,77 @@ const drawRegion = (
     byBiome.set(tile.biome, list);
   });
 
-  const patternCache = new Map<string, CanvasPattern | null>();
+  const proceduralPatternCache = new Map<string, CanvasPattern | null>();
+  let totalRenderedTiles = 0;
 
+  // Pre-load all textures first to ensure they're ready before rendering
+  const textureLoadPromises = Array.from(byBiome.keys()).map((biome) => {
+    const style = BIOME_STYLE[biome as keyof typeof BIOME_STYLE];
+    if (!style?.texture) return Promise.resolve();
+    return preloadTexture(style.texture).catch(() => {
+      // Continue even if texture fails to load
+    });
+  });
+
+  // Render only after all textures are requested (they load in background)
   byBiome.forEach((tiles, biome) => {
     const style = BIOME_STYLE[biome as keyof typeof BIOME_STYLE];
-    let pattern = patternCache.get(biome);
-    if (pattern === undefined) {
-      pattern = makePattern(ctx, style.pattern, style.edge, style.base, 0.08);
-      patternCache.set(biome, pattern);
+    if (!style) {
+      console.warn(`[microRegion] Unknown biome: "${biome}", skipping... (${tiles.length} tiles)`);
+      return;
     }
+
+    // Load texture and create global pattern for this biome
+    let texturePattern: CanvasPattern | null = null;
+    if (style.texture) {
+      const texture = loadTexture(style.texture);
+
+      if (texture && !texturePatternCache.has(style.texture)) {
+        try {
+          texturePattern = ctx.createPattern(texture, 'repeat');
+          texturePatternCache.set(style.texture, texturePattern);
+          console.log(`[microRegion] Created texture pattern for ${biome}`);
+        } catch (error) {
+          console.warn(`[microRegion] Failed to create texture pattern for ${biome}:`, error);
+          texturePatternCache.set(style.texture, null);
+        }
+      } else if (texturePatternCache.has(style.texture)) {
+        texturePattern = texturePatternCache.get(style.texture)!;
+      }
+    }
+
+    // Get procedural pattern overlay
+    let proceduralPattern = proceduralPatternCache.get(biome);
+    if (proceduralPattern === undefined) {
+      proceduralPattern = makePattern(ctx, style.pattern, style.edge, style.base, 0.08);
+      proceduralPatternCache.set(biome, proceduralPattern);
+    }
+
     tiles.forEach((tile) => {
+      totalRenderedTiles++;
       const p = axialToPx(tile.q, tile.r, size);
       ctx.save();
       ctx.translate(p.x, p.y);
 
-      ctx.fillStyle = style.base;
-      ctx.globalAlpha = 1;
-      ctx.fill(hexPath(size - 1.2));
-
-      const textureUrl = style.texture;
-      if (textureUrl) {
-        const texture = loadTexture(textureUrl);
-        if (texture && texture.complete) {
-          ctx.globalAlpha = 0.4;
-          ctx.drawImage(texture, -size, -size, size * 2, size * 2);
-        }
+      // Apply seamless texture pattern (global, not centered on hex)
+      if (texturePattern) {
+        ctx.globalAlpha = 0.8;  // Texture opacity
+        ctx.fillStyle = texturePattern;
+        ctx.fill(hexPath(size - 1.2));
       }
 
-      if (pattern) {
-        ctx.globalAlpha = 0.12;
-        ctx.fillStyle = pattern;
+      // Apply procedural pattern overlay
+      if (proceduralPattern) {
+        ctx.globalAlpha = 0.08;  // Subtle pattern overlay
+        ctx.fillStyle = proceduralPattern;
         ctx.fill(hexPath(size - 1.6));
       }
 
+      // Strengthen lighting effects with enhanced bevel gradient
       const bevel = ctx.createLinearGradient(0, -size, 0, size);
-      bevel.addColorStop(0, 'rgba(255,255,255,0.16)');
+      bevel.addColorStop(0, 'rgba(255,255,255,0.24)');
       bevel.addColorStop(0.55, 'rgba(255,255,255,0)');
-      bevel.addColorStop(1, 'rgba(15,23,42,0.32)');
+      bevel.addColorStop(1, 'rgba(15,23,42,0.48)');
       ctx.globalAlpha = 1;
       ctx.fillStyle = bevel;
       ctx.fill(hexPath(size - 1.4));
@@ -350,6 +431,20 @@ export const drawMicro = (
 ) => {
   const homeTileKey = home?.regionId === region.id ? home.tileKey : null;
   const selectedTile = hovered ? region.tiles.find((t) => t.q === hovered.q && t.r === hovered.r) : null;
+
+  // Calculate tile coordinate bounds for diagnostics
+  if (region.tiles.length > 0) {
+    let minQ = region.tiles[0].q;
+    let maxQ = region.tiles[0].q;
+    let minR = region.tiles[0].r;
+    let maxR = region.tiles[0].r;
+    region.tiles.forEach((tile) => {
+      minQ = Math.min(minQ, tile.q);
+      maxQ = Math.max(maxQ, tile.q);
+      minR = Math.min(minR, tile.r);
+      maxR = Math.max(maxR, tile.r);
+    });
+  }
 
   drawRegion(ctx, cam, dpr, region, CONFIG.microHexSizePx, timeMs, {
     selected: selectedTile,

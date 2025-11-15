@@ -1,5 +1,5 @@
 
-import { Building, MissionType, PlanetBiome, Research, ResourceType, Resources, ShipBlueprint } from './types';
+import { Building, BuildingConfig, MissionType, PlanetBiome, Research, ResourceType, Resources, ShipBlueprint } from './types';
 
 /**
  * Starting resource amounts granted to every player at account creation.
@@ -87,6 +87,86 @@ export const BUILDINGS: Record<string, Building> = {
     productionMultiplier: 1.1,
     baseEnergySupply: 30,
     energySupplyMultiplier: 1.12,
+  },
+
+  /**
+   * Orichalkum-Speicher: Lagerhalle für Orichalkum. Erhöht nur die Orichalkum-Lagerkapazität.
+   */
+  orichalkumSpeicher: {
+    id: 'orichalkumSpeicher',
+    name: 'Orichalkum-Speicher',
+    description: 'Speicherhalle für Orichalkum. Erhöht die Lagerkapazität für Orichalkum pro Stufe um 1000.',
+    image: '/assets/illustrations/buildings/orichalkum-speicher.svg',
+    baseCost: { [ResourceType.Orichalkum]: 100, [ResourceType.Fokuskristalle]: 50, [ResourceType.Vitriol]: 0 },
+    costMultiplier: 1.8,
+    baseProduction: { [ResourceType.Orichalkum]: 0, [ResourceType.Fokuskristalle]: 0, [ResourceType.Vitriol]: 0 },
+    productionMultiplier: 1.0,
+    baseEnergyConsumption: 5,
+    energyConsumptionMultiplier: 1.05,
+  },
+
+  /**
+   * Kristall-Tresor: Lagerhalle für Fokuskristalle. Erhöht nur die Fokuskristalle-Lagerkapazität.
+   */
+  kristallTresor: {
+    id: 'kristallTresor',
+    name: 'Kristall-Tresor',
+    description: 'Gesicherte Lagerkammer für Fokuskristalle. Erhöht die Lagerkapazität für Fokuskristalle pro Stufe um 500.',
+    image: '/assets/illustrations/buildings/kristall-tresor.svg',
+    baseCost: { [ResourceType.Orichalkum]: 80, [ResourceType.Fokuskristalle]: 100, [ResourceType.Vitriol]: 0 },
+    costMultiplier: 1.9,
+    baseProduction: { [ResourceType.Orichalkum]: 0, [ResourceType.Fokuskristalle]: 0, [ResourceType.Vitriol]: 0 },
+    productionMultiplier: 1.0,
+    baseEnergyConsumption: 8,
+    energyConsumptionMultiplier: 1.08,
+  },
+
+  /**
+   * Vitriol-Tank: Lagerhalle für Vitriol. Erhöht nur die Vitriol-Lagerkapazität.
+   */
+  vitriolTank: {
+    id: 'vitriolTank',
+    name: 'Vitriol-Tank',
+    description: 'Druckbehälter für Vitriolgas. Erhöht die Lagerkapazität für Vitriol pro Stufe um 300.',
+    image: '/assets/illustrations/buildings/vitriol-tank.svg',
+    baseCost: { [ResourceType.Orichalkum]: 120, [ResourceType.Fokuskristalle]: 60, [ResourceType.Vitriol]: 30 },
+    costMultiplier: 2.0,
+    baseProduction: { [ResourceType.Orichalkum]: 0, [ResourceType.Fokuskristalle]: 0, [ResourceType.Vitriol]: 0 },
+    productionMultiplier: 1.0,
+    baseEnergyConsumption: 12,
+    energyConsumptionMultiplier: 1.1,
+  },
+
+  /**
+   * Forschungslabor: Zentrale Forschungseinrichtung. Ermöglicht Forschungen und reduziert Forschungszeit.
+   */
+  forschungslabor: {
+    id: 'forschungslabor',
+    name: 'Forschungslabor',
+    description: 'Zentrale für Grundlagen- und angewandte Forschung. Notwendig um zu forschen. Erhöht Niveau der Forschungsgeschwindigkeit pro Stufe um 5%.',
+    image: '/assets/illustrations/buildings/forschungslabor.svg',
+    baseCost: { [ResourceType.Orichalkum]: 150, [ResourceType.Fokuskristalle]: 200, [ResourceType.Vitriol]: 0 },
+    costMultiplier: 2.2,
+    baseProduction: { [ResourceType.Orichalkum]: 0, [ResourceType.Fokuskristalle]: 0, [ResourceType.Vitriol]: 0 },
+    productionMultiplier: 1.0,
+    baseEnergyConsumption: 20,
+    energyConsumptionMultiplier: 1.15,
+  },
+
+  /**
+   * Werft: Schiffsbauanstalt. Baut Schiffe und Verteidigungseinheiten. Leveln schaltet neue Schiffstypen frei (in Kombination mit Forschungsbaum).
+   */
+  werft: {
+    id: 'werft',
+    name: 'Werft',
+    description: 'Schiffbau- und Montageanlage. Baut Kriegsschiffe und Verteidigungseinheiten. Höhere Stufen ermöglichen den Bau stärkerer Schiffe (kombiniert mit Forschung).',
+    image: '/assets/illustrations/buildings/werft.svg',
+    baseCost: { [ResourceType.Orichalkum]: 200, [ResourceType.Fokuskristalle]: 100, [ResourceType.Vitriol]: 50 },
+    costMultiplier: 2.0,
+    baseProduction: { [ResourceType.Orichalkum]: 0, [ResourceType.Fokuskristalle]: 0, [ResourceType.Vitriol]: 0 },
+    productionMultiplier: 1.0,
+    baseEnergyConsumption: 15,
+    energyConsumptionMultiplier: 1.1,
   },
 };
 
@@ -281,6 +361,106 @@ export const INITIAL_RESEARCH_LEVELS: Record<string, number> = {};
 export const MAX_BUILD_QUEUE_LENGTH = 3;
 
 /**
+ * Configuration for each settlement building type (immutable reference data).
+ * Defines size per level, max level, and production type.
+ */
+export const SETTLEMENT_BUILDING_CONFIGS: Record<string, BuildingConfig> = {
+  // Production buildings
+  orichalkumSchmelze: {
+    buildingType: 'orichalkumSchmelze',
+    displayName: 'Orichalkum-Schmelze',
+    description: 'Schmilzt Erze zu Orichalkum',
+    sizePerLevel: 1,
+    maxLevel: 25,
+    productionType: 'orichalkum',
+  },
+  kristallKondensator: {
+    buildingType: 'kristallKondensator',
+    displayName: 'Kristallkondensator',
+    description: 'Kondensiert Fokuskristalle',
+    sizePerLevel: 1,
+    maxLevel: 25,
+    productionType: 'fokuskristalle',
+  },
+  vitriolDestille: {
+    buildingType: 'vitriolDestille',
+    displayName: 'Vitriol-Destille',
+    description: 'Destilliert Vitriolgas',
+    sizePerLevel: 1,
+    maxLevel: 25,
+    productionType: 'vitriol',
+  },
+  dampfkraftwerk: {
+    buildingType: 'dampfkraftwerk',
+    displayName: 'Dampfkraftwerk',
+    description: 'Erzeugt Energie (bar)',
+    sizePerLevel: 2,
+    maxLevel: 30,
+    productionType: 'energy',
+  },
+
+  // Storage buildings
+  orichalkumSpeicher: {
+    buildingType: 'orichalkumSpeicher',
+    displayName: 'Orichalkum-Speicher',
+    description: 'Speichert Orichalkum (+1000 pro Level)',
+    sizePerLevel: 1,
+    maxLevel: 15,
+    productionType: null,
+  },
+  kristallTresor: {
+    buildingType: 'kristallTresor',
+    displayName: 'Kristall-Tresor',
+    description: 'Speichert Fokuskristalle (+500 pro Level)',
+    sizePerLevel: 1,
+    maxLevel: 15,
+    productionType: null,
+  },
+  vitriolTank: {
+    buildingType: 'vitriolTank',
+    displayName: 'Vitriol-Tank',
+    description: 'Speichert Vitriol (+300 pro Level)',
+    sizePerLevel: 1,
+    maxLevel: 15,
+    productionType: null,
+  },
+
+  // Key buildings
+  forschungslabor: {
+    buildingType: 'forschungslabor',
+    displayName: 'Forschungslabor',
+    description: 'Ermöglicht Forschung (-5% Zeit pro Level)',
+    sizePerLevel: 2,
+    maxLevel: 20,
+    productionType: null,
+  },
+  werft: {
+    buildingType: 'werft',
+    displayName: 'Werft',
+    description: 'Baut Schiffe und Verteidigungseinheiten',
+    sizePerLevel: 3,
+    maxLevel: 20,
+    productionType: null,
+  },
+};
+
+/**
+ * Default settlement building capacity by settlement level.
+ */
+export const SETTLEMENT_CAPACITY_BY_LEVEL: Record<number, number> = {
+  1: 20,
+  2: 30,
+  3: 45,
+  4: 60,
+  5: 80,
+  6: 100,
+  7: 120,
+  8: 140,
+  9: 150,
+  10: 150, // Max out at level 10
+};
+
+/**
  * Visual theme tokens for alle Planetenbiome inklusive Label und Farbcodes für die Hex-Map.
  */
 export const BIOME_STYLES: Record<PlanetBiome, { label: string; fill: string; stroke: string }> = {
@@ -333,6 +513,22 @@ export const MAX_SHIPYARD_QUEUE = 4;
  * Blueprint-Definitionen für Schiffe der Werftansicht.
  */
 export const SHIP_BLUEPRINTS: ShipBlueprint[] = [
+  {
+    id: 'kolonistenschiff',
+    name: 'Kolonistenschiff',
+    description: 'Spezialschiff zum Gründen neuer Siedlungen mit Pionier-Crew.',
+    image: '/assets/illustrations/ships/kolonistenschiff.svg',
+    role: 'Kolonisation',
+    hangarSlots: 2,
+    baseCost: {
+      [ResourceType.Orichalkum]: 500,
+      [ResourceType.Fokuskristalle]: 250,
+      [ResourceType.Vitriol]: 150,
+    },
+    buildTimeSeconds: 1200,
+    crew: 15,
+    cargo: 500,
+  },
   {
     id: 'spaeherdrohne',
     name: 'Späherdrohne',

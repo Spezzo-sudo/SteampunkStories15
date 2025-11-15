@@ -1,5 +1,6 @@
 {
-  "name": "steam-war-raiders",
+  "name": "aether-imperium",
+  "description": "Äther-Imperium: Chroniken des Dampfs - A steampunk MMO strategy game",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -11,15 +12,15 @@
     "lint": "eslint . --ext ts,tsx",
     "test": "vitest run",
     "test:watch": "vitest",
-    "setup:firestore": "tsx scripts/setupFirestore.ts"
+    "seed:supabase": "tsx scripts/seedSupabase.ts"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",
+    "@supabase/supabase-js": "^2.81.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "firebase": "^12.5.0",
     "immer": "^10.1.1",
     "lodash.isequal": "^4.5.0",
     "lucide-react": "^0.553.0",
@@ -36,6 +37,7 @@
     "@typescript-eslint/parser": "^8.23.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.22",
+    "dotenv": "^16.4.5",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-react": "^7.37.2",
@@ -43,7 +45,7 @@
     "globals": "^15.14.0",
     "happy-dom": "^20.0.8",
     "postcss": "^8.5.6",
-    "puppeteer": "^24.26.1",
+    "puppeteer": "^24.29.1",
     "tailwindcss": "^4.1.17",
     "tsx": "^4.19.2",
     "typescript": "~5.8.2",

@@ -8,16 +8,6 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: '0.0.0.0',
-      hmr: {
-        clientPort: 443,
-      },
-      proxy: {
-        '/api': {
-          target: 'http://127.0.0.1:5001/steampunk-stories-15/us-central1/api',
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api/, ''),
-        },
-      },
     },
     plugins: [react()],
     define: {

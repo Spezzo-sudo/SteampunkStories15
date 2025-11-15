@@ -34,8 +34,7 @@ const MacroMapComponent: React.FC = () => {
 
   const handleResize = useCallback(() => {
     const canvas = canvasRef.current;
-    const currentWorld = worldRef.current;
-    if (!canvas || !currentWorld) {
+    if (!canvas) {
       return;
     }
     const result = resizeCanvas(canvas);
@@ -51,7 +50,12 @@ const MacroMapComponent: React.FC = () => {
       cssWidth: result.cssWidth,
       cssHeight: result.cssHeight,
     };
-    fitMacroView(cameraRef.current, currentWorld, result.width, result.height);
+
+    // Fit view if world is available
+    const currentWorld = worldRef.current;
+    if (currentWorld) {
+      fitMacroView(cameraRef.current, currentWorld, result.width, result.height);
+    }
   }, []);
 
   useEffect(() => {
@@ -105,7 +109,7 @@ const MacroMapComponent: React.FC = () => {
     const rect = canvasRef.current.getBoundingClientRect();
     const worldX = (evt.clientX - rect.left - cam.tx) / cam.scale;
     const worldY = (evt.clientY - rect.top - cam.ty) / cam.scale;
-    
+
     let closest: { dist: number, region: Region | undefined } = { dist: Infinity, region: undefined };
     for (const region of world.regions) {
       const center = regionAxToPx(region.RQ, region.RR, CONFIG.macroHexRadiusPx)
@@ -114,7 +118,7 @@ const MacroMapComponent: React.FC = () => {
         closest = { dist, region };
       }
     }
-    
+
     if (closest.region && closest.dist < CONFIG.macroHexRadiusPx * 0.9) {
       return closest.region;
     }

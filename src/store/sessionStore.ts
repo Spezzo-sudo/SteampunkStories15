@@ -1,8 +1,8 @@
 import { create } from 'zustand';
-import type { User } from 'firebase/auth';
-import { observeAuth, signIn, signOut, ensureDefaultAdmin } from '@/services/firebase/auth';
+import type { User } from '@supabase/supabase-js';
+import { observeAuth, signIn, signOut, ensureDefaultAdmin } from '@/services/supabase/auth';
 import { DEFAULT_ADMIN_CREDENTIALS } from '@/config/authConfig';
-import { fetchOrCreatePlayerProfile } from '@/services/firebase/playerApi';
+import { fetchOrCreatePlayerProfile } from '@/services/supabase/playerApi';
 import type { PlayerProfile } from '@/data/types';
 
 const defaultWorldId = import.meta.env.VITE_WORLD_ID ?? 'playtest-world';
@@ -23,7 +23,7 @@ interface SessionState {
   setWorldId: (worldId: string) => void;
 }
 
-/** Zustand store maintaining Firebase authentication and player profile state. */
+/** Zustand store maintaining Supabase authentication and player profile state. */
 export const useSessionStore = create<SessionState>((set, get) => ({
   user: null,
   profile: null,
@@ -38,7 +38,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     const existing = get().authUnsubscribe;
     existing?.();
     set({ initializing: true, error: null, profile: null });
-    await ensureDefaultAdmin(DEFAULT_ADMIN_CREDENTIALS.username, DEFAULT_ADMIN_CREDENTIALS.password);
+
+    // Try to ensure default admin, but don't block if it fails
+    try {
+      await ensureDefaultAdmin(DEFAULT_ADMIN_CREDENTIALS.username, DEFAULT_ADMIN_CREDENTIALS.password);
+    } catch (error) {
+      console.warn('[sessionStore] Failed to ensure default admin:', error);
+    }
+
     const unsubscribe = observeAuth(async (user) => {
       set({ user, initializing: false });
       if (user) {
@@ -54,11 +61,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   loadProfile: async (user) => {
     set({ loadingProfile: true, profileError: null });
     try {
+      console.log('[sessionStore] Loading profile for user:', user.id);
       const profile = await fetchOrCreatePlayerProfile(user);
+      console.log('[sessionStore] Profile loaded successfully:', profile);
       set({ profile, loadingProfile: false });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load profile';
+      console.error('[sessionStore] Failed to load profile:', errorMessage, error);
       set({ loadingProfile: false, profileError: errorMessage });
+      throw error;
     }
   },
 

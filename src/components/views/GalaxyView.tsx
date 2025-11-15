@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import { MacroMap } from '@/components/galaxy/MacroMap';
 import { RegionView } from '@/components/galaxy/RegionView';
+import { SettlementHUD } from '@/components/galaxy/SettlementHUD';
 import { useMapStore } from '@/store/mapStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
+import { useMissionGameLoop } from '@/hooks/useMissionGameLoop';
 
 /** Renders a welcome screen for players who have not yet placed a home base. */
 const WelcomeMode: React.FC = () => (
@@ -27,21 +29,55 @@ export default function GalaxyView(): React.ReactElement {
   const region = useMapStore((state) => state.region);
   const loadingWorld = useMapStore((state) => state.loadingWorld);
   const worldError = useMapStore((state) => state.worldError);
+  const setWorldId = useMapStore((state) => state.setWorldId);
 
-  const userId = useSessionStore((state) => state.user?.uid);
+  const userId = useSessionStore((state) => state.user?.id);
   const profile = useSessionStore((state) => state.profile);
   const sessionLoading = useSessionStore((state) => state.initializing);
   const loadingProfile = useSessionStore((state) => state.loadingProfile);
+  const sessionWorldId = useSessionStore((state) => state.worldId);
 
   // --- Memoized Values ---
   const regionCount = useMemo(() => world?.regions.length ?? 0, [world]);
 
+  // --- Game Loop ---
+  useMissionGameLoop(); // Progresses scout and stationing missions
+
   // --- Effects ---
+  // Set worldId in mapStore if not already set
   useEffect(() => {
-    // Guard to ensure world data is loaded only once.
-    if (!userId || didLoadWorld.current) {
+    if (sessionWorldId && !useMapStore.getState().worldId) {
+      console.log('[GalaxyView] Setting worldId:', sessionWorldId);
+      setWorldId(sessionWorldId);
+    }
+  }, [sessionWorldId, setWorldId]);
+
+  // Load world after worldId is set
+  useEffect(() => {
+    if (!userId) {
       return;
     }
+
+    const mapStoreWorldId = useMapStore.getState().worldId;
+    if (!mapStoreWorldId) {
+      console.log('[GalaxyView] Waiting for worldId to be set...');
+      return;
+    }
+
+    // Check if world is already loaded
+    const currentWorld = useMapStore.getState().world;
+    if (currentWorld && currentWorld.regions.length > 0) {
+      console.log('[GalaxyView] World already loaded, skipping reload');
+      return;
+    }
+
+    // Guard to ensure world data is loaded only once
+    if (didLoadWorld.current) {
+      console.log('[GalaxyView] World load already in progress');
+      return;
+    }
+
+    console.log('[GalaxyView] Loading world for userId:', userId, 'worldId:', mapStoreWorldId);
     didLoadWorld.current = true;
     useMapStore.getState().loadWorld();
   }, [userId]);
@@ -54,8 +90,8 @@ export default function GalaxyView(): React.ReactElement {
   if (profile && !profile.hasPlacedHome) {
     if (view === 'micro' && region) {
       return (
-        <section className="map-h flex flex-col p-2 sm:p-4">
-          <div className="absolute left-1/2 top-6 z-10 -translate-x-1/2 rounded-md bg-slate-900/80 px-4 py-2 text-white shadow-lg">
+        <section className="map-h relative flex flex-col p-2 sm:p-4">
+          <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-md bg-slate-900/90 px-6 py-3 text-center text-sm text-amber-100 shadow-lg border border-slate-700/40">
             Wähle ein Feld, um deine Heimatbasis zu errichten.
           </div>
           <div className="relative flex-1 overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-950/70 shadow-inner">
@@ -83,6 +119,7 @@ export default function GalaxyView(): React.ReactElement {
         <div className="relative flex-1 overflow-hidden rounded-3xl border border-slate-700/60 bg-slate-950/70 shadow-inner">
           <RegionView region={region} />
         </div>
+        <SettlementHUD playerId={userId || ''} isVisible={true} />
       </section>
     );
   }
@@ -107,6 +144,7 @@ export default function GalaxyView(): React.ReactElement {
           <MacroMap />
         )}
       </div>
+      <SettlementHUD playerId={userId || ''} isVisible={true} />
     </section>
   );
 }

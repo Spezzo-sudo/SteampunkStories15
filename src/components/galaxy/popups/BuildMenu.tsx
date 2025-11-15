@@ -2,7 +2,6 @@ import React from 'react';
 import { useMapStore } from '@/store/mapStore';
 import { UNIT_SPECS, type UnitSpec } from '@/data/units';
 import { Button } from '@/components/ui/Button';
-import { shallow } from 'zustand/shallow';
 
 type BuildMenuProps = {
   onClose: () => void;
@@ -12,12 +11,8 @@ type BuildMenuProps = {
  * A popup for building units on a specific tile.
  */
 export const BuildMenu: React.FC<BuildMenuProps> = ({ onClose }) => {
-  const { buildMenuTile } = useMapStore(
-    (state) => ({
-      buildMenuTile: state.buildMenuTile,
-    }),
-    shallow,
-  );
+  // Einzelnen Selektor verwenden um Infinite Loops zu vermeiden
+  const buildMenuTile = useMapStore((state) => state.buildMenuTile);
 
   if (!buildMenuTile) {
     return null;

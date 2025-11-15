@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { HomeSelection, Region, Tile } from '@/data/types';
-import { listRegions } from '@/services/firebase/worldData';
-import { fetchRegion } from '@/services/firebase/gameApi';
+import { listRegions } from '@/services/supabase/worldData';
+import { fetchRegion } from '@/services/supabase/gameApi';
 
 export interface World {
   regions: Region[];
@@ -39,6 +39,7 @@ interface MapActions {
   selectRegion: (region: Region) => Promise<void>;
   setRegion: (region: Region) => void;
   toggleAllianceFilter: () => void;
+  invalidateRegionCache: (regionId: string) => void;
 }
 
 const regionCache = new Map<string, Region | null>();
@@ -91,15 +92,21 @@ export const useMapStore = create(
     loadWorld: async () => {
       const { worldId, loadingWorld } = get();
       if (loadingWorld) {
+        console.log('[mapStore] loadWorld already in progress, skipping');
         return;
       }
       if (!worldId) {
+        console.error('[mapStore] loadWorld: No worldId available');
         set({ worldError: 'Keine Welt-ID verfügbar.' });
         return;
       }
+      console.log('[mapStore] loadWorld: Starting to fetch regions for worldId:', worldId);
       set({ loadingWorld: true, worldError: null });
       try {
+        const startTime = performance.now();
         const regions = await listRegions(worldId);
+        const endTime = performance.now();
+        console.log(`[mapStore] loadWorld: Fetched ${regions.length} regions in ${(endTime - startTime).toFixed(2)}ms`);
         set((state) => {
           const allianceFilterOn = state.world?.allianceFilterOn ?? false;
           const selectedRegionId = state.world?.selectedRegionId ?? null;
@@ -112,9 +119,10 @@ export const useMapStore = create(
             home: state.home,
           };
           state.loadingWorld = false;
+          console.log('[mapStore] loadWorld: World state updated, loadingWorld set to false');
         });
       } catch (error) {
-        console.error('Failed to load world:', error);
+        console.error('[mapStore] Failed to load world:', error);
         const message =
           error instanceof Error ? error.message : 'Regionen konnten nicht geladen werden.';
         set({ worldError: message, loadingWorld: false, world: null });
@@ -340,6 +348,12 @@ export const useMapStore = create(
         ensureWorldShell(state);
         state.world!.allianceFilterOn = !state.world!.allianceFilterOn;
       });
+    },
+
+    invalidateRegionCache: (regionId) => {
+      console.log('[mapStore] Invalidating cache for region:', regionId);
+      regionCache.delete(regionId);
+      pendingRegionLoads.delete(regionId);
     },
   })),
 );

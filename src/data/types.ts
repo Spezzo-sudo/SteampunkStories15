@@ -10,12 +10,16 @@ export type Biome =
   | 'SWAMP'
   | 'LAKE'
   | 'MOUNTAIN'
-  | 'TUNDRA';
+  | 'TUNDRA'
+  | 'MOUNTAINS' // Legacy alias for MOUNTAIN
+  | 'OCEAN'; // Legacy alias for LAKE
 
 /** User profile tracking game-specific state. */
 export interface PlayerProfile {
-  /** Unique user identifier matching the auth record. */
+  /** Unique user identifier matching the auth record (user_id from auth). */
   uid: string;
+  /** Database player ID - used as foreign key for settlements/ships. */
+  playerId: string;
   /** Player display name. */
   name: string;
   /** True if the player has placed their first home settlement. */
@@ -32,6 +36,8 @@ export interface Settlement {
 
 /** Tile metadata for the micro region map. */
 export type Tile = Ax & {
+  /** Unique tile identifier (from DB or composite key). */
+  id: string;
   /** Biome code displayed for the tile. */
   biome: Biome;
   /** Parent region identifier. */

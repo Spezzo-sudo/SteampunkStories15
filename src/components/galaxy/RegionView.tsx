@@ -21,24 +21,13 @@ interface RenderEnv {
 const DEFAULT_CAMERA: Camera = { tx: 0, ty: 0, scale: 1, minScale: 0.1, maxScale: 2 };
 
 const RegionViewComponent: React.FC<{ region: Region }> = ({ region }) => {
-  const {
-    backToMacro,
-    home,
-    handleTileClick,
-    selectedTileForPopup,
-    closeActionPopup,
-    closeBuildMenu,
-  } = useMapStore(
-    (state) => ({
-      backToMacro: state.backToMacro,
-      home: state.home,
-      handleTileClick: state.handleTileClick,
-      selectedTileForPopup: state.selectedTileForPopup,
-      closeActionPopup: state.closeActionPopup,
-      closeBuildMenu: state.closeBuildMenu,
-    }),
-    shallow,
-  );
+  // Einzelne Selektoren verwenden um Infinite Loops zu vermeiden
+  const backToMacro = useMapStore((state) => state.backToMacro);
+  const home = useMapStore((state) => state.home);
+  const handleTileClick = useMapStore((state) => state.handleTileClick);
+  const selectedTileForPopup = useMapStore((state) => state.selectedTileForPopup);
+  const closeActionPopup = useMapStore((state) => state.closeActionPopup);
+  const closeBuildMenu = useMapStore((state) => state.closeBuildMenu);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);

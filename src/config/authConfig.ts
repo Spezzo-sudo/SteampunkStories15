@@ -11,4 +11,4 @@ export const DEFAULT_ADMIN_CREDENTIALS = {
 /**
  * Helper returning the canonical email for the default administrator.
  */
-export const getDefaultAdminEmail = (): string => `${DEFAULT_ADMIN_CREDENTIALS.username}@steampunk.local`;
+export const getDefaultAdminEmail = (): string => `${DEFAULT_ADMIN_CREDENTIALS.username}@game.local`;
