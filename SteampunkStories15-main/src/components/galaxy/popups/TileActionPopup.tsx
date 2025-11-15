@@ -64,6 +64,7 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
   // Settlement creation modal state
   const [showSettlementModal, setShowSettlementModal] = useState(false);
   const [isCreatingSettlement, setIsCreatingSettlement] = useState(false);
+  const [settlementError, setSettlementError] = useState<string | null>(null);
 
   // Battle report state
   const [activeBattle, setActiveBattle] = useState(getBattlesByTile(tile.id)[0] || null);
@@ -91,24 +92,33 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
   };
 
   const handleConfirmSettlement = async (settlementName: string) => {
-    if (!user?.id || !tile.id || !settlementName.trim()) return;
+    if (!user?.id || !tile.id || !settlementName.trim()) {
+      setSettlementError('Fehler: Nutzerdaten oder Flächenkoordinaten fehlen');
+      return;
+    }
 
     setIsCreatingSettlement(true);
+    setSettlementError(null);
     try {
       const newSettlement = await createSettlement(user.id, tile.id, settlementName.trim());
       if (newSettlement) {
         console.log(`Settlement created: ${newSettlement.name} (${newSettlement.id})`);
         // Close modal and refresh settlements
         setShowSettlementModal(false);
+        setSettlementError(null);
         // Reload settlements in store
         const { loadSettlements } = useSettlementStore.getState?.() || {};
         if (loadSettlements) {
           await loadSettlements(user.id);
         }
         onClose(); // Close tile popup to reflect changes
+      } else {
+        setSettlementError('Siedlung konnte nicht erstellt werden (leere Antwort)');
       }
     } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Unbekannter Fehler';
       console.error('Error creating settlement:', err);
+      setSettlementError(`Verbindungsfehler: ${errorMsg}`);
     } finally {
       setIsCreatingSettlement(false);
     }
@@ -389,9 +399,13 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
       {showSettlementModal && (
         <SettlementNamePrompt
           onConfirm={handleConfirmSettlement}
-          onCancel={() => setShowSettlementModal(false)}
+          onCancel={() => {
+            setShowSettlementModal(false);
+            setSettlementError(null);
+          }}
           isLoading={isCreatingSettlement}
           tileCoordinates={`${tile.q},${tile.r}`}
+          error={settlementError}
         />
       )}
     </>

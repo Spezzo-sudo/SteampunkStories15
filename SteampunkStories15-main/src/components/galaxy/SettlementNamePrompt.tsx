@@ -6,6 +6,7 @@ interface SettlementNamePromptProps {
   onCancel: () => void;
   isLoading?: boolean;
   tileCoordinates?: string;
+  error?: string | null;
 }
 
 /**
@@ -19,30 +20,34 @@ export const SettlementNamePrompt: React.FC<SettlementNamePromptProps> = ({
   onCancel,
   isLoading = false,
   tileCoordinates = 'unbekannt',
+  error: externalError = null,
 }) => {
   const [settlementName, setSettlementName] = useState('');
-  const [error, setError] = useState('');
+  const [validationError, setValidationError] = useState('');
+
+  // Use external error (API/parent) if available, otherwise validation error
+  const error = externalError || validationError;
 
   const handleConfirm = () => {
     const trimmed = settlementName.trim();
 
     // Validation
     if (!trimmed) {
-      setError('Siedlungsname erforderlich');
+      setValidationError('Siedlungsname erforderlich');
       return;
     }
 
     if (trimmed.length < 3) {
-      setError('Name muss mindestens 3 Zeichen lang sein');
+      setValidationError('Name muss mindestens 3 Zeichen lang sein');
       return;
     }
 
     if (trimmed.length > 30) {
-      setError('Name darf maximal 30 Zeichen lang sein');
+      setValidationError('Name darf maximal 30 Zeichen lang sein');
       return;
     }
 
-    setError('');
+    setValidationError('');
     onConfirm(trimmed);
   };
 
@@ -76,7 +81,7 @@ export const SettlementNamePrompt: React.FC<SettlementNamePromptProps> = ({
                 value={settlementName}
                 onChange={(e) => {
                   setSettlementName(e.target.value);
-                  if (error) setError(''); // Clear error on input
+                  if (validationError) setValidationError(''); // Clear error on input
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder="z.B. Stahlort, Kristallfels, Dampfhaven..."

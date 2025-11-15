@@ -12,7 +12,8 @@
       "Bash(git commit:*)",
       "Bash(git config:*)",
       "Bash(node test_scout_system.js:*)",
-      "Bash(npx tsc --noEmit)"
+      "Bash(npx tsc --noEmit)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
