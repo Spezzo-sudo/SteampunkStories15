@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { RESEARCH, BUILDINGS } from '@/constants';
-import GameCard, { RequirementInfo } from '@/components/ui/GameCard';
+import CollapsibleCard from '@/components/ui/CollapsibleCard';
 import { canResearch } from '@/lib/requirements';
 
 const RESEARCH_CATEGORIES = {
@@ -38,40 +38,63 @@ const CATEGORY_LABELS: Record<keyof typeof RESEARCH_CATEGORIES, string> = {
 };
 
 /**
- * Converts requirement definition to RequirementInfo for display.
+ * Generates requirement text for CollapsibleCard requirements prop.
+ * Combines tech-tree requirements into human-readable strings with status indicators.
  */
-const buildRequirementsList = (
+const buildResearchRequirementsText = (
   tech: typeof RESEARCH[keyof typeof RESEARCH],
   currentResearch: Record<string, number>,
   currentBuildings: Record<string, number>
-): RequirementInfo[] => {
+): string[] => {
+  const reqs: string[] = [];
+
   if (!tech.requires || tech.requires.length === 0) {
-    return [];
+    return reqs;
   }
 
-  return tech.requires.map((req) => {
+  tech.requires.forEach((req) => {
     if (req.type === 'research') {
       const researchName = RESEARCH[req.id as keyof typeof RESEARCH]?.name || req.id;
       const requiredLevel = req.level || 1;
       const currentLevel = currentResearch[req.id] || 0;
+      const met = currentLevel >= requiredLevel;
 
-      return {
-        name: researchName,
-        required: `Stufe ${requiredLevel}`,
-        met: currentLevel >= requiredLevel,
-      };
+      reqs.push(`${met ? '✓' : '✗'} ${researchName} Stufe ${requiredLevel}`);
     } else {
       const buildingName = BUILDINGS[req.id as keyof typeof BUILDINGS]?.name || req.id;
       const requiredLevel = req.level || 1;
       const currentLevel = currentBuildings[req.id] || 0;
+      const met = currentLevel >= requiredLevel;
 
-      return {
-        name: buildingName,
-        required: `Level ${requiredLevel}`,
-        met: currentLevel >= requiredLevel,
-      };
+      reqs.push(`${met ? '✓' : '✗'} ${buildingName} Level ${requiredLevel}`);
     }
   });
+
+  return reqs;
+};
+
+/**
+ * Icon mapping für Forschung.
+ */
+const getResearchIcon = (researchId: string): string => {
+  const iconMap: Record<string, string> = {
+    aetherdynamik: '⚡',
+    kolbenAntrieb: '🔧',
+    dampfjet: '💨',
+    aethermotor: '⚙️',
+    kesseldruckOptimierung: '📈',
+    differenzmaschinenKalkuel: '🧮',
+    observatoriumsnetz: '🔭',
+    panzerungstechnik: '🛡️',
+    teslaSpulenForschung: '⚡',
+    lichtbogenIngenieurwesen: '💡',
+    pulverProjektilkunde: '🎯',
+    magnetfeldBarrieren: '🧲',
+    aetherplasmaEntladungen: '🌟',
+    spionagetechnologie: '🕵️',
+    rumpfverstaerkungsLegierungen: '🔨',
+  };
+  return iconMap[researchId] || '🔬';
 };
 
 const ALL_CATEGORY_KEY = 'alle';
@@ -94,6 +117,13 @@ const ResearchView: React.FC = () => {
   const handleCategoryChange = (category: CategoryKey) => {
     setActiveCategory(category);
   };
+
+  const handleUpgrade = useCallback(
+    (tech: typeof RESEARCH[keyof typeof RESEARCH]) => {
+      startUpgrade(tech);
+    },
+    [startUpgrade],
+  );
 
   const categoryEntries = Object.entries(CATEGORY_LABELS) as ([
     keyof typeof RESEARCH_CATEGORIES,
@@ -155,27 +185,31 @@ const ResearchView: React.FC = () => {
           const isUpgrading = buildQueue.some((item) => item.entityId === tech.id);
           const affordable = canAfford(costForNextUpgrade);
 
-          // UPDATED: Use dynamic requirements from tech definition
+          // Validate requirements for tech
           const validation = canResearch(tech.id, research, buildings);
-          const requirementsList = buildRequirementsList(tech, research, buildings);
+          const requirementsText = buildResearchRequirementsText(tech, research, buildings);
 
           return (
-            <GameCard
+            <CollapsibleCard
               key={tech.id}
-              name={tech.name}
+              id={tech.id}
+              icon={getResearchIcon(tech.id)}
+              title={tech.name}
               level={currentLevel}
               targetLevel={targetLevel}
-              description={tech.description}
-              image={tech.image}
-              imageAlt={`${tech.name} Forschungsgrafik`}
-              upgradeCost={costForNextUpgrade}
+              shortDescription={tech.description}
+              fullDescription={`${tech.description}\n\nDiese Forschung ist ein essentieller Bestandteil deines wissenschaftlichen Fortschritts.`}
+              cost={costForNextUpgrade}
               buildTime={buildTime}
               canAfford={affordable}
-              canUpgrade={validation.canDo}
-              requirements={requirementsList}
-              onUpgrade={() => startUpgrade(tech)}
+              onAction={() => handleUpgrade(tech)}
+              actionLabel={isUpgrading ? 'Weiter forschen' : 'Forschen'}
+              image={tech.image}
+              imageAlt={`${tech.name} Forschungsgrafik`}
               isUpgrading={isUpgrading}
               queueLength={buildQueue.length}
+              requirements={requirementsText.length > 0 ? requirementsText : undefined}
+              disabled={!validation.canDo || buildQueue.length >= 10}
             />
           );
         })}

@@ -1,58 +1,82 @@
 import React, { useCallback } from 'react';
 import { useGameStore } from '@/store/gameStore';
-import { BUILDINGS } from '@/constants';
-import GameCard, { RequirementInfo } from '@/components/ui/GameCard';
+import { BUILDINGS, RESEARCH } from '@/constants';
+import CollapsibleCard from '@/components/ui/CollapsibleCard';
 import { Building } from '@/types';
 import { canBuildOrUpgrade } from '@/lib/requirements';
 
 /**
- * Builds requirement list for a building from its definition.
+ * Generates requirement text for CollapsibleCard requirements prop.
+ * Combines tech-tree and energy requirements into human-readable strings.
  */
-const buildRequirementsList = (
+const buildRequirementsText = (
   building: Building,
   currentResearch: Record<string, number>,
-  currentBuildings: Record<string, number>
-): RequirementInfo[] => {
-  if (!building.requires || building.requires.length === 0) {
-    return [];
+  currentBuildings: Record<string, number>,
+  kesseldruck: { capacity: number; consumption: number }
+): string[] => {
+  const reqs: string[] = [];
+
+  // 1. Tech-tree requirements
+  if (building.requires && building.requires.length > 0) {
+    building.requires.forEach((req) => {
+      if (req.type === 'research') {
+        const researchDef = RESEARCH[req.id as keyof typeof RESEARCH];
+        const researchName = researchDef?.name || req.id;
+        const requiredLevel = req.level || 1;
+        const currentLevel = currentResearch[req.id] || 0;
+        const met = currentLevel >= requiredLevel;
+
+        reqs.push(`${met ? '✓' : '✗'} ${researchName} Stufe ${requiredLevel}`);
+      } else if (req.type === 'building') {
+        const buildingDef = BUILDINGS[req.id as keyof typeof BUILDINGS];
+        const buildingName = buildingDef?.name || req.id;
+        const requiredLevel = req.level || 1;
+        const currentLevel = currentBuildings[req.id] || 0;
+        const met = currentLevel >= requiredLevel;
+
+        reqs.push(`${met ? '✓' : '✗'} ${buildingName} Level ${requiredLevel}`);
+      }
+    });
   }
 
-  return building.requires.map((req) => {
-    if (req.type === 'research') {
-      const researchName = (BUILDINGS as any)[req.id]?.name || req.id; // Note: req.id is research
-      const researchDef = Object.values(BUILDINGS).find((b) => (b as any).id === req.id);
-      const requiredLevel = req.level || 1;
-      const currentLevel = currentResearch[req.id] || 0;
+  // 2. Energy requirement
+  if (building.baseEnergyConsumption && building.baseEnergyConsumption > 0) {
+    const wouldExceed =
+      kesseldruck.consumption + building.baseEnergyConsumption > kesseldruck.capacity;
+    const availableEnergy = kesseldruck.capacity - kesseldruck.consumption;
+    const met = !wouldExceed;
 
-      return {
-        name: researchName,
-        required: `Stufe ${requiredLevel}`,
-        met: currentLevel >= requiredLevel,
-      };
-    } else if (req.type === 'building') {
-      const buildingName = BUILDINGS[req.id as keyof typeof BUILDINGS]?.name || req.id;
-      const requiredLevel = req.level || 1;
-      const currentLevel = currentBuildings[req.id] || 0;
+    reqs.push(
+      `${met ? '✓' : '✗'} Energiekapazität: ${building.baseEnergyConsumption} benötigt / ${availableEnergy} verfügbar`
+    );
+  }
 
-      return {
-        name: buildingName,
-        required: `Level ${requiredLevel}`,
-        met: currentLevel >= requiredLevel,
-      };
-    } else {
-      // Energy requirement
-      return {
-        name: 'Energiekapazität',
-        required: 'Verfügbar',
-        met: true,
-        blocked: false,
-      };
-    }
-  });
+  return reqs;
 };
 
 /**
- * Übersicht aller ausbaubaren Gebäude inklusive Upgrade-Kosten und Bauzeit.
+ * Icon mapping für Gebäude.
+ */
+const getBuildingIcon = (buildingId: string): string => {
+  const iconMap: Record<string, string> = {
+    orichalkumSchmelze: '⚙️',
+    kristallKondensator: '💠',
+    vitrolDestille: '⚗️',
+    dampfkraftwerk: '🔥',
+    energiespeicher: '🔋',
+    lagerhaus: '📦',
+    forschungslabor: '🧪',
+    werft: '⚓',
+    rathaus: '🏛️',
+    marktplatz: '🏪',
+  };
+  return iconMap[buildingId] || '🏗️';
+};
+
+/**
+ * Übersicht aller ausbaubaren Gebäude mit modernem CollapsibleCard-Design.
+ * Integriert Requirements-Validierung mit moderner UI.
  */
 const BuildingsView: React.FC = () => {
   const buildings = useGameStore((state) => state.buildings);
@@ -75,9 +99,9 @@ const BuildingsView: React.FC = () => {
     <section className="space-y-8 pb-16">
       <header className="space-y-2">
         <h2 className="text-[clamp(1.8rem,1.2vw+1.5rem,2.4rem)] font-cinzel text-yellow-300">Gebäudeausbau</h2>
-        <p className="text-sm text-gray-300">Organisiere deine Industriekapazitäten in einem responsiven Grid.</p>
+        <p className="text-sm text-gray-300">Klicke auf ein Gebäude für Details oder baue direkt aus.</p>
       </header>
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {Object.values(BUILDINGS).map((building) => {
           const currentLevel = buildings[building.id] || 0;
           const targetLevel = buildQueue
@@ -90,7 +114,7 @@ const BuildingsView: React.FC = () => {
           const isUpgrading = buildQueue.some((item) => item.entityId === building.id);
           const affordable = canAfford(costForNextUpgrade);
 
-          // UPDATED: Validate with canBuildOrUpgrade
+          // Validate requirements (tech-tree + energy)
           const validation = canBuildOrUpgrade(
             building.id,
             nextLevel,
@@ -98,25 +122,34 @@ const BuildingsView: React.FC = () => {
             buildings,
             kesseldruck
           );
-          const requirementsList = buildRequirementsList(building, research, buildings);
+          const requirementsText = buildRequirementsText(
+            building,
+            research,
+            buildings,
+            kesseldruck
+          );
 
           return (
-            <GameCard
+            <CollapsibleCard
               key={building.id}
-              name={building.name}
+              id={building.id}
+              icon={getBuildingIcon(building.id)}
+              title={building.name}
               level={currentLevel}
               targetLevel={targetLevel}
-              description={building.description}
-              image={building.image}
-              imageAlt={`${building.name} Illustration`}
-              upgradeCost={costForNextUpgrade}
+              shortDescription={building.description}
+              fullDescription={`${building.description}\n\nDieses Gebäude ist ein essentieller Bestandteil deines Imperiums.`}
+              cost={costForNextUpgrade}
               buildTime={buildTime}
               canAfford={affordable}
-              canUpgrade={validation.canDo}
-              requirements={requirementsList}
-              onUpgrade={() => handleUpgrade(building)}
+              onAction={() => handleUpgrade(building)}
+              actionLabel={isUpgrading ? 'Weiter ausbauen' : 'Ausbauen'}
+              image={building.image}
+              imageAlt={`${building.name} Illustration`}
               isUpgrading={isUpgrading}
               queueLength={buildQueue.length}
+              requirements={requirementsText.length > 0 ? requirementsText : undefined}
+              disabled={!validation.canDo || buildQueue.length >= 10}
             />
           );
         })}
