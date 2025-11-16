@@ -38,14 +38,16 @@ export const calculateKesseldruck = (
     if (building.baseEnergySupply) {
       const supplyMultiplier = building.energySupplyMultiplier ?? 1;
       const exponent = Math.max(0, level - 1);
-      const supply = building.baseEnergySupply * Math.pow(supplyMultiplier, exponent);
+      const levelFactor = Math.pow(supplyMultiplier, exponent);
+      const supply = building.baseEnergySupply * level * levelFactor;
       capacity += Math.floor(supply);
     }
 
     if (building.baseEnergyConsumption) {
       const consumptionMultiplier = building.energyConsumptionMultiplier ?? 1;
       const exponent = Math.max(0, level - 1);
-      const demand = building.baseEnergyConsumption * Math.pow(consumptionMultiplier, exponent);
+      const levelFactor = Math.pow(consumptionMultiplier, exponent);
+      const demand = building.baseEnergyConsumption * level * levelFactor;
       consumption += Math.floor(demand);
     }
   });
