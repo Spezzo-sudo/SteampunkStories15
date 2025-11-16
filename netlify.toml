@@ -10,7 +10,7 @@
 
   # Node.js Version (wichtig für kompatibles Build)
   [build.environment]
-    NODE_VERSION = "18"
+    NODE_VERSION = "20"
 
 # SPA-Routing: Alle URLs auf index.html umleiten
 [[redirects]]
