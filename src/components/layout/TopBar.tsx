@@ -3,9 +3,10 @@ import { useGameStore } from '@/store/gameStore';
 import { ResourceType } from '@/types';
 import ProgressBar from '@/components/ui/ProgressBar';
 import { useSessionStore } from '@/store/sessionStore';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Check, AlertCircle } from 'lucide-react';
 import { getPlayerSettlements } from '@/services/supabase/settlementApi';
 import { useUiStore, ToastVariant } from '@/store/uiStore';
+import { useSyncStatusStore, formatTimeSinceSync } from '@/store/syncStatusStore';
 
 const formatNumber = (num: number) => Math.floor(num).toLocaleString('de-DE');
 
@@ -84,6 +85,10 @@ const TopBar: React.FC = () => {
   const profile = useSessionStore((state) => state.profile);
   const logout = useSessionStore((state) => state.logout);
   const { pushToast } = useUiStore();
+
+  // Sync status
+  const { lastSyncedAt, isSyncing, syncError } = useSyncStatusStore();
+  const syncStatusText = formatTimeSinceSync(lastSyncedAt);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -188,6 +193,31 @@ const TopBar: React.FC = () => {
         />
         <span className="hidden sm:inline">Aktualisieren</span>
       </button>
+
+      {/* Sync Status Indicator */}
+      {profile?.hasPlacedHome && (
+        <div
+          className="flex items-center gap-2 rounded-xl border border-gray-700/40 bg-black/40 px-3 py-2 text-xs"
+          title={syncError || `Automatische Synchronisation: ${syncStatusText}`}
+        >
+          {syncError ? (
+            <>
+              <AlertCircle className="h-3.5 w-3.5 text-red-400" />
+              <span className="text-red-300">Sync-Fehler</span>
+            </>
+          ) : isSyncing ? (
+            <>
+              <RefreshCw className="h-3.5 w-3.5 animate-spin text-cyan-400" />
+              <span className="text-cyan-300 hidden sm:inline">Synchronisiere...</span>
+            </>
+          ) : (
+            <>
+              <Check className="h-3.5 w-3.5 text-emerald-400" />
+              <span className="text-gray-300 hidden sm:inline">{syncStatusText}</span>
+            </>
+          )}
+        </div>
+      )}
 
       {sessionUser && (
         <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/40 px-4 py-2 text-xs uppercase tracking-wide text-gray-200">

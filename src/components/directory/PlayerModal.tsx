@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { PlayerProfile } from '@/types';
 import { FOCUS_OUTLINE } from '@/styles/tokens';
+import { isPlayerOnline, formatLastSeen } from '@/hooks/useActivityHeartbeat';
 
 interface PlayerModalProps {
   profile: PlayerProfile;
@@ -39,6 +40,11 @@ const PlayerModal: React.FC<PlayerModalProps> = ({ profile, onClose, onFavorite,
 
   const totalPages = Math.max(1, Math.ceil(profile.planets.length / PAGE_SIZE));
 
+  // Calculate online status
+  const lastActiveDate = new Date(profile.lastActiveAt);
+  const online = isPlayerOnline(lastActiveDate);
+  const lastSeenText = formatLastSeen(lastActiveDate);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6"
@@ -50,7 +56,19 @@ const PlayerModal: React.FC<PlayerModalProps> = ({ profile, onClose, onFavorite,
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-yellow-800/30 pb-4">
           <div>
             <h2 className="text-[clamp(1.4rem,1vw+1.1rem,1.9rem)] font-cinzel text-yellow-200">{profile.tagline}</h2>
-            <p className="text-xs text-gray-400">Zuletzt aktiv: vor {Math.round((Date.now() - profile.lastActiveAt) / (60 * 60 * 1000))} Stunden</p>
+            <div className="flex items-center gap-2">
+              {online ? (
+                <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+                  <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Online
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5 text-xs text-gray-400">
+                  <span className="h-2 w-2 rounded-full bg-gray-500" />
+                  {lastSeenText}
+                </span>
+              )}
+            </div>
             {profile.allianceId ? (
               <p className="text-xs text-amber-200">Bande: {profile.allianceId}</p>
             ) : (

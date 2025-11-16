@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { useSettlementStore } from '@/store/settlementStore';
+import { useSyncStatusStore } from '@/store/syncStatusStore';
 import { getPlayerSettlements, updateSettlement } from '@/services/supabase/settlementApi';
 import { ResourceType } from '@/types';
 
@@ -110,6 +111,7 @@ export function useSettlementResourceSync(enabled = true) {
 
     try {
       console.log('[useSettlementResourceSync] Saving resources to settlement...');
+      useSyncStatusStore.getState().setSyncing(true);
 
       await updateSettlement(mainSettlementIdRef.current, {
         resources: {
@@ -130,8 +132,10 @@ export function useSettlementResourceSync(enabled = true) {
       });
 
       console.log('[useSettlementResourceSync] Resources saved to DB');
+      useSyncStatusStore.getState().setLastSynced();
     } catch (error) {
       console.error('[useSettlementResourceSync] Failed to save to settlement:', error);
+      useSyncStatusStore.getState().setSyncError(error instanceof Error ? error.message : 'Unknown error');
     }
   };
 
