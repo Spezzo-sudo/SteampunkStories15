@@ -6,6 +6,7 @@ import { useMapStore } from '@/store/mapStore';
 import { useSessionStore } from '@/store/sessionStore';
 import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { useMissionGameLoop } from '@/hooks/useMissionGameLoop';
+import { useTileRealtimeSync } from '@/hooks/useTileRealtimeSync';
 
 /** Renders a welcome screen for players who have not yet placed a home base. */
 const WelcomeMode: React.FC = () => (
@@ -42,6 +43,9 @@ export default function GalaxyView(): React.ReactElement {
 
   // --- Game Loop ---
   useMissionGameLoop(); // Progresses scout and stationing missions
+
+  // --- Realtime Subscriptions ---
+  useTileRealtimeSync(); // Sync tile ownership changes in real-time
 
   // --- Effects ---
   // Set worldId in mapStore if not already set

@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { ResourceType } from '@/types';
 import ProgressBar from '@/components/ui/ProgressBar';
 import { useSessionStore } from '@/store/sessionStore';
+import { RefreshCw } from 'lucide-react';
+import { getPlayerSettlements } from '@/services/supabase/settlementApi';
+import { useUiStore, ToastVariant } from '@/store/uiStore';
 
 const formatNumber = (num: number) => Math.floor(num).toLocaleString('de-DE');
 
@@ -78,13 +81,76 @@ const TopBar: React.FC = () => {
   const resources = useGameStore((state) => state.resources);
   const storage = useGameStore((state) => state.storage);
   const sessionUser = useSessionStore((state) => state.user);
+  const profile = useSessionStore((state) => state.profile);
   const logout = useSessionStore((state) => state.logout);
+  const { pushToast } = useUiStore();
+
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const handleLogout = async () => {
     try {
       await logout();
     } catch (error) {
       console.error('Logout fehlgeschlagen', error);
+    }
+  };
+
+  /**
+   * Manually refresh resources from the server.
+   * Fetches the latest settlement data and updates the gameStore.
+   */
+  const handleRefreshResources = async () => {
+    if (!profile?.playerId) {
+      pushToast({
+        title: 'Fehler',
+        description: 'Kein Spielerprofil geladen.',
+        variant: ToastVariant.Error,
+      });
+      return;
+    }
+
+    setIsRefreshing(true);
+    try {
+      const settlements = await getPlayerSettlements(profile.playerId);
+
+      if (settlements.length === 0) {
+        pushToast({
+          title: 'Keine Siedlung',
+          description: 'Du hast noch keine Siedlung platziert.',
+          variant: ToastVariant.Warning,
+        });
+        setIsRefreshing(false);
+        return;
+      }
+
+      // Use first settlement as main base (for now)
+      const mainSettlement = settlements[0];
+
+      if (mainSettlement.resources) {
+        // Update gameStore with fresh data from server
+        useGameStore.setState({
+          resources: {
+            [ResourceType.Orichalkum]: mainSettlement.resources.Orichalkum || 0,
+            [ResourceType.Fokuskristalle]: mainSettlement.resources.Fokuskristalle || 0,
+            [ResourceType.Vitriol]: mainSettlement.resources.Vitriol || 0,
+          },
+        });
+
+        pushToast({
+          title: 'Ressourcen aktualisiert',
+          description: 'Daten vom Server geladen.',
+          variant: ToastVariant.Success,
+        });
+      }
+    } catch (error) {
+      console.error('[TopBar] Failed to refresh resources:', error);
+      pushToast({
+        title: 'Aktualisierung fehlgeschlagen',
+        description: error instanceof Error ? error.message : 'Unbekannter Fehler',
+        variant: ToastVariant.Error,
+      });
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -108,6 +174,21 @@ const TopBar: React.FC = () => {
         />
         <KesseldruckDisplay />
       </div>
+
+      {/* Manual Refresh Button */}
+      <button
+        type="button"
+        onClick={handleRefreshResources}
+        disabled={isRefreshing}
+        title="Ressourcen vom Server aktualisieren"
+        className="group flex items-center gap-2 rounded-xl border border-cyan-500/60 bg-black/40 px-4 py-2 text-sm font-semibold text-cyan-300 transition hover:border-cyan-400 hover:bg-cyan-900/20 hover:text-cyan-200 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        <RefreshCw
+          className={`h-4 w-4 transition-transform ${isRefreshing ? 'animate-spin' : 'group-hover:rotate-180'}`}
+        />
+        <span className="hidden sm:inline">Aktualisieren</span>
+      </button>
+
       {sessionUser && (
         <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/40 px-4 py-2 text-xs uppercase tracking-wide text-gray-200">
           <span className="font-semibold text-amber-300">{sessionUser.email ?? 'Commander'}</span>

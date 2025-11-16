@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useMessageStore } from '@/store/messageStore';
 import { FOCUS_OUTLINE } from '@/styles/tokens';
+import { useMessageRealtimeSync } from '@/hooks/useMessageRealtimeSync';
 
 interface ChatSidebarProps {
   onShareCoordinate?: (coordinate: string) => void;
@@ -21,6 +22,9 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({ onShareCoordinate, coordinate
   const { rooms, activeRoomId, messages, openRoom, sendMessage } = useMessageStore();
   const [tab, setTab] = useState<TabId>('alliance');
   const [draft, setDraft] = useState('');
+
+  // Enable Realtime message sync
+  useMessageRealtimeSync();
 
   const roomsForTab = useMemo(() => rooms.filter((room) => room.type === tab), [rooms, tab]);
   const activeRoom = rooms.find((room) => room.id === activeRoomId);
