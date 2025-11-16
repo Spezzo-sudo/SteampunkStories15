@@ -125,13 +125,16 @@ const linearToSrgb = (channel: number): number => {
 
 const averageHexColors = (colors: string[]): string => {
   if (colors.length === 0) {
-    return '#facc15';
+    // Debug fallback: magenta indicates empty color array
+    return '#ff00ff';
   }
   const valid = colors
     .map((color) => hexToRgb(color))
     .filter((entry): entry is NonNullable<ReturnType<typeof hexToRgb>> => entry != null);
   if (valid.length === 0) {
-    return '#facc15';
+    // Debug fallback: magenta indicates invalid color format(s)
+    console.warn('[HexMap] Invalid color values detected in alliance/player colors:', colors);
+    return '#ff00ff';
   }
   const { red, green, blue } = valid.reduce(
     (acc, current) => ({

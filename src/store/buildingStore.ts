@@ -10,6 +10,7 @@ import {
   cancelBuildQueueEntry,
 } from '@/services/supabase/buildingApi';
 import { SETTLEMENT_BUILDING_CONFIGS, BUILDINGS, SETTLEMENT_CAPACITY_BY_LEVEL } from '@/constants';
+import { getCityState, canBuildInCity, calculateSizeIncrease } from '@/lib/cityState';
 
 /**
  * Settlement building state management.
@@ -37,7 +38,13 @@ interface BuildingActions {
   getSettlementBuildingLevel: (settlementId: string, buildingType: string) => number;
   getActiveBuilds: (settlementId: string) => BuildQueueEntry[];
   getSettlementCapacity: (settlementId: string, settlementLevel: number) => { used: number; max: number };
-  canBuildBuilding: (settlementId: string, buildingType: string, newLevel: number, settlementLevel: number) => boolean;
+  canBuildBuilding: (
+    settlementId: string,
+    buildingType: string,
+    newLevel: number,
+    settlementLevel: number,
+    biomeId?: string
+  ) => { canBuild: boolean; reasons: string[] };
 
   // Building operations
   queueBuildingUpgrade: (
@@ -160,40 +167,64 @@ export const useBuildingStore = create<BuildingState & BuildingActions>()(
       };
     },
 
-    canBuildBuilding: (settlementId, buildingType, newLevel, settlementLevel) => {
+    canBuildBuilding: (settlementId, buildingType, newLevel, settlementLevel, biomeId) => {
+      const reasons: string[] = [];
+
       // Check if building type exists
       const config = SETTLEMENT_BUILDING_CONFIGS[buildingType];
       if (!config) {
-        console.error('canBuildBuilding: unknown building type', buildingType);
-        return false;
+        return {
+          canBuild: false,
+          reasons: ['Unbekannter Gebäudetyp'],
+        };
       }
 
       // Check max level
       if (config.maxLevel && newLevel > config.maxLevel) {
-        console.error(`canBuildBuilding: level ${newLevel} exceeds max ${config.maxLevel}`);
-        return false;
+        reasons.push(`Maximales Level erreicht: ${config.maxLevel}`);
       }
 
-      // Check settlement capacity
-      const currentBuilding = get().getSettlementBuilding(settlementId, buildingType);
+      // Get current buildings for capacity calculation
+      const buildings = get().buildingsBySettlement[settlementId] || [];
+      const currentBuilding = buildings.find((b) => b.buildingType === buildingType);
       const currentLevel = currentBuilding?.level || 0;
 
-      // Calculate size change
-      const oldSize = currentLevel * config.sizePerLevel;
-      const newSize = newLevel * config.sizePerLevel;
-      const sizeIncrease = newSize - oldSize;
+      // If biomeId is provided, use advanced city state validation
+      if (biomeId) {
+        const cityState = getCityState(settlementId, biomeId, settlementLevel, buildings);
 
-      const { used: usedCapacity, max: maxCapacity } = get().getSettlementCapacity(
-        settlementId,
-        settlementLevel
-      );
+        // Check biome-based building restrictions
+        const biomeCheck = canBuildInCity(cityState, buildingType, newLevel);
+        if (!biomeCheck.canBuild) {
+          reasons.push(...biomeCheck.reasons);
+        }
 
-      if (usedCapacity + sizeIncrease > maxCapacity) {
-        console.error(`canBuildBuilding: insufficient capacity (need ${sizeIncrease}, have ${maxCapacity - usedCapacity})`);
-        return false;
+        // Check capacity with size increase
+        const sizeIncrease = calculateSizeIncrease(buildingType, currentLevel, newLevel);
+        if (cityState.availableSlots < sizeIncrease) {
+          reasons.push(
+            `Nicht genug Baukapazität (benötigt: ${sizeIncrease}, verfügbar: ${cityState.availableSlots})`
+          );
+        }
+      } else {
+        // Fallback: legacy capacity check without biome validation
+        const sizeIncrease = calculateSizeIncrease(buildingType, currentLevel, newLevel);
+        const { used: usedCapacity, max: maxCapacity } = get().getSettlementCapacity(
+          settlementId,
+          settlementLevel
+        );
+
+        if (usedCapacity + sizeIncrease > maxCapacity) {
+          reasons.push(
+            `Nicht genug Baukapazität (benötigt: ${sizeIncrease}, verfügbar: ${maxCapacity - usedCapacity})`
+          );
+        }
       }
 
-      return true;
+      return {
+        canBuild: reasons.length === 0,
+        reasons,
+      };
     },
 
     // ==================== BUILDING OPERATIONS ====================
