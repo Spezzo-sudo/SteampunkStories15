@@ -12,6 +12,16 @@ export interface KesseldruckSnapshot {
 }
 
 /**
+ * Minimum base production per settlement per hour.
+ * Ensures players can never get stuck with zero production.
+ */
+export const BASE_PRODUCTION_PER_HOUR: Resources = {
+  [ResourceType.Orichalkum]: 80,
+  [ResourceType.Fokuskristalle]: 40,
+  [ResourceType.Vitriol]: 10,
+};
+
+/**
  * Creates a fresh resource map with zero values for all resource types.
  */
 export const createEmptyResources = (): Resources => ({
@@ -65,6 +75,7 @@ export const calculateKesseldruck = (
 
 /**
  * Calculates the per-tick resource production while respecting the current kesseldruck efficiency.
+ * Includes minimum base production to prevent players from getting stuck.
  */
 export const calculateResourceProductionPerTick = (
   buildingLevels: Record<string, number>,
@@ -73,6 +84,7 @@ export const calculateResourceProductionPerTick = (
 ): Resources => {
   const income = createEmptyResources();
 
+  // Calculate building production
   Object.values(BUILDINGS).forEach((building) => {
     const level = buildingLevels[building.id] || 0;
     if (!level || !building.baseProduction) {
@@ -93,6 +105,13 @@ export const calculateResourceProductionPerTick = (
       const productionPerSecond = (productionPerHour / 3600) * serverSpeed * efficiency;
       income[resource] += productionPerSecond;
     });
+  });
+
+  // Add minimum base production (ensures players can never get stuck)
+  Object.values(ResourceType).forEach((resource) => {
+    const baseProductionPerHour = BASE_PRODUCTION_PER_HOUR[resource];
+    const baseProductionPerSecond = (baseProductionPerHour / 3600) * serverSpeed;
+    income[resource] = Math.max(income[resource], baseProductionPerSecond);
   });
 
   return income;

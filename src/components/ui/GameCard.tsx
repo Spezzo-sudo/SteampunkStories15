@@ -112,8 +112,8 @@ const GameCard: React.FC<GameCardProps> = ({
       ) : null}
       <header className="mb-3 border-b border-yellow-800/30 pb-3">
         <h3
-          className="text-[clamp(1.1rem,0.9vw+1rem,1.5rem)] font-cinzel font-semibold text-yellow-300 leading-snug"
-          style={{ hyphens: 'auto', wordBreak: 'break-word' }}
+          className="text-[clamp(1.1rem,0.9vw+1rem,1.5rem)] font-cinzel font-semibold text-yellow-300 leading-snug break-words"
+          style={{ hyphens: 'auto' }}
         >
           {name}
         </h3>

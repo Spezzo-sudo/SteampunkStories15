@@ -140,7 +140,7 @@ const CollapsibleCard: React.FC<CollapsibleCardProps> = ({
           </div>
 
           {/* Short Description */}
-          <p className="text-xs text-gray-300 line-clamp-1">{shortDescription}</p>
+          <p className="line-clamp-2 text-xs leading-relaxed text-gray-300">{shortDescription}</p>
 
           {/* Stats Row (Icons) */}
           {Object.keys(stats).length > 0 && (

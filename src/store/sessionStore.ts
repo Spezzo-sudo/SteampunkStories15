@@ -6,8 +6,19 @@ import { fetchOrCreatePlayerProfile } from '@/services/supabase/playerApi';
 import { loadPlayerResources } from '@/services/supabase/resourceSync';
 import { useGameStore } from '@/store/gameStore';
 import type { PlayerProfile } from '@/data/types';
+import { createHomeSettlement, getPlayerSettlements } from '@/services/supabase/settlementApi';
 
 const defaultWorldId = import.meta.env.VITE_WORLD_ID ?? 'playtest-world';
+
+/**
+ * Reads the referral code from URL parameters (?ref=playerId).
+ * Returns the referrer player ID if present, otherwise null.
+ */
+const getReferralCode = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  const params = new URLSearchParams(window.location.search);
+  return params.get('ref');
+};
 
 interface SessionState {
   user: User | null;
@@ -72,6 +83,31 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const resources = await loadPlayerResources(profile.playerId);
       if (resources) {
         useGameStore.setState({ resources });
+      }
+
+      // Check if player has any settlements
+      const settlements = await getPlayerSettlements(profile.playerId);
+      if (settlements.length === 0) {
+        console.log('[sessionStore] No settlements found, creating home settlement...');
+
+        // Check for referral code in URL
+        const referrerId = getReferralCode();
+        if (referrerId) {
+          console.log(`[sessionStore] Referral code detected: ${referrerId}`);
+        }
+
+        // Create home settlement (near referrer if code provided)
+        const homeSettlement = await createHomeSettlement(
+          profile.playerId,
+          profile.name,
+          referrerId || undefined
+        );
+
+        if (homeSettlement) {
+          console.log('[sessionStore] Home settlement created successfully');
+        } else {
+          console.error('[sessionStore] Failed to create home settlement');
+        }
       }
 
       set({ profile, loadingProfile: false });
