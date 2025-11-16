@@ -19,6 +19,7 @@ export const NAV_LINKS: NavLinkProps[] = [
   { view: View.Galaxie, label: 'Galaxie', icon: '🪐' },
   { view: View.Techtree, label: 'Techbaum', icon: '🕸️' },
   { view: View.Bande, label: 'Bande', icon: '🤝' },
+  { view: View.Wiki, label: 'Wiki', icon: '📖' },
 ];
 
 /**
