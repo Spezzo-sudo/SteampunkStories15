@@ -3,8 +3,10 @@
 
 [build]
   # Build-Befehl (erstellt Production-Build)
-  # Rebuild lightningcss native binary für Linux x64 vor dem Build
-  command = "npm rebuild lightningcss --update-binary && npm run build"
+  # 1. Install dependencies mit npm ci (clean install für CI/CD)
+  # 2. Rebuild lightningcss native binary für Linux x64
+  # 3. Run production build
+  command = "npm ci && npm rebuild lightningcss --update-binary && npm run build"
 
   # Verzeichnis mit den fertigen Dateien
   publish = "dist"
