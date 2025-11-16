@@ -106,6 +106,28 @@ export enum View {
   Galaxie = 'Galaxie',
   Bande = 'Bande',
   Techtree = 'Techtree',
+  Wiki = 'Wiki',
+}
+
+export interface WikiCategory {
+  id: string;
+  name: string;
+  icon: string;
+  description: string;
+}
+
+export interface WikiArticle {
+  id: string;
+  category: string;
+  title: string;
+  icon: string;
+  content: string;
+  searchTags: string[];
+}
+
+export interface WikiData {
+  categories: WikiCategory[];
+  articles: WikiArticle[];
 }
 
 export interface BuildQueueItem {

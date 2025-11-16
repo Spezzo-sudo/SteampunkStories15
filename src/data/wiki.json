@@ -1,0 +1,146 @@
+{
+  "categories": [
+    {
+      "id": "mechanics",
+      "name": "Spielmechaniken",
+      "icon": "⚙️",
+      "description": "Grundlegende Spielmechaniken verstehen"
+    },
+    {
+      "id": "buildings",
+      "name": "Gebäude",
+      "icon": "🏗️",
+      "description": "Übersicht aller Gebäude und deren Funktionen"
+    },
+    {
+      "id": "research",
+      "name": "Technologien",
+      "icon": "🧪",
+      "description": "Forschungsbäume und technologische Fortschritte"
+    },
+    {
+      "id": "missions",
+      "name": "Missionen",
+      "icon": "🚀",
+      "description": "Missionstypen und Strategien"
+    },
+    {
+      "id": "guides",
+      "name": "Strategieguides",
+      "icon": "📚",
+      "description": "Anfängerleitfäden und strategische Tipps"
+    },
+    {
+      "id": "faq",
+      "name": "FAQ",
+      "icon": "❓",
+      "description": "Häufig gestellte Fragen"
+    }
+  ],
+  "articles": [
+    {
+      "id": "kesseldruck",
+      "category": "mechanics",
+      "title": "Kesseldruck (Energie)",
+      "icon": "🔥",
+      "content": "## Kesseldruck verstehen\n\nKesseldruck ist die Energieversorgung deiner Kolonie. Sie wird als Dampfdruck gemessen und ist essentiell für alle Operationen.\n\n### Wie Kesseldruck funktioniert\n- **Produktion**: Energieproduzierende Gebäude wie Dampfgeneratoren und Kohlekraftwerke produzieren Kesseldruck\n- **Verbrauch**: Andere Gebäude verbrauchen Kesseldruck während des Betriebs\n- **Speicherung**: Energiespeicher können Überschuss speichern für später\n- **Maximum**: Du kannst nicht mehr Kesseldruck produzieren als deine Speicherkapazität erlaubt\n\n### Was passiert bei Energiemangel\nWenn deine Energieproduktion unter deinen Verbrauch fällt:\n- Gebäude arbeiten weniger effizient\n- Ressourcenproduktion wird gedrosselt\n- Technologieforschung verlangsamt sich\n- Militärische Operationen sind eingeschränkt\n\n### Tipp für Anfänger\nBaue früh deine erste Energieanlage! Eine stabile Energieversorgung ist wichtiger als Ressourcenlagerung.",
+      "searchTags": ["energie", "dampf", "kesseldruck", "strom", "versorgung"]
+    },
+    {
+      "id": "ressourcen",
+      "category": "mechanics",
+      "title": "Ressourcensystem",
+      "icon": "💎",
+      "content": "## Die drei Grundressourcen\n\nAlles im Spiel kostet Ressourcen. Es gibt drei Arten:\n\n### 1. Orichalkum ⚙️\n- **Funktion**: Baustoff für Gebäude und Schiffe\n- **Beschaffung**: Minen produzieren es, Asteroiden abbauen, oder Handel\n- **Wichtig für**: Gebäudebau, Schiffsproduktion, Forschung\n\n### 2. Fokuskristalle 💠\n- **Funktion**: Energiespeicher und fortgeschrittene Technologie\n- **Beschaffung**: Kristalllabore, Kristallminen, spezielle Biome\n- **Wichtig für**: Fortgeschrittene Forschung, Schiffe, Energie\n\n### 3. Vitriol ☠️\n- **Funktion**: Chemikalien für Alchemie und Waffen\n- **Beschaffung**: Chemiefabriken, Vulkanische Biome, Synthese\n- **Wichtig für**: Militärische Upgrades, Gift-Waffen, Chemische Prozesse\n\n### Produktionssteigerung\n- Baue mehrere Minen verschiedener Typen\n- Forsche Effizienz-Technologien\n- Nutze Gebäude-Multiplikatoren durch Upgrades\n- Biom-Boni beachten: Bestimmte Biome produzieren bestimmte Ressourcen besser\n\n### Speicherung\nJede Ressource hat eine Lagerstätten-Kapazität. Baue Lagerhäuser, wenn du mehr speichern musst.",
+      "searchTags": ["ressourcen", "rohstoffe", "orichalkum", "kristalle", "vitriol", "produktion"]
+    },
+    {
+      "id": "biome",
+      "category": "mechanics",
+      "title": "Biome und Planeten",
+      "icon": "🌍",
+      "content": "## Die fünf Biome\n\nJeder Planet hat ein Biom, das seine Eigenschaften und Produktionsboni bestimmt.\n\n### 1. Messingwüste 🏜️\n- **Klima**: Heiß und trocken\n- **Bonus**: +20% Orichalkum-Produktion\n- **Nachteil**: Weniger Wasser für Dampfenergie\n- **Gut für**: Bergbau-fokussierte Kolonien\n\n### 2. Äthermoore 🌫️\n- **Klima**: Neblig und mysteriös\n- **Bonus**: +25% Fokuskristall-Produktion\n- **Nachteil**: Niedriger Energieausstoß\n- **Gut für**: Forschungs-fokussierte Spieler\n\n### 3. Dampfarchipel 🌊\n- **Klima**: Inseln mit heißen Quellen\n- **Bonus**: +30% Energie-Produktion\n- **Nachteil**: Begrenzte Landfläche\n- **Gut für**: Energieversorgung\n\n### 4. Uhrwerksteppe 🏔️\n- **Klima**: Bergig und industriell\n- **Bonus**: +15% Alle Ressourcen\n- **Nachteil**: Schwer zu besiedeln\n- **Gut für**: Balanced Growth\n\n### 5. Glimmerkluft ⚡\n- **Klima**: Elektrisch aufgeladen\n- **Bonus**: +40% Vitriol-Produktion, +20% Energie\n- **Nachteil**: Gefährlich für unerfahrene Spieler\n- **Gut für**: Fortgeschrittene Spieler\n\n### Tipps zur Biom-Auswahl\n- **Anfänger**: Messingwüste oder Dampfarchipel wählen\n- **Vielfalt**: Mehrere Planeten mit verschiedenen Biomen besiedeln für diversifizierte Produktion\n- **Spezialisierung**: Ein Biom mit hohem Bonus deiner bevorzugten Ressource wählen",
+      "searchTags": ["biome", "planet", "gelände", "messingwüste", "moor", "archipel", "steppe", "kluft"]
+    },
+    {
+      "id": "missions",
+      "category": "mechanics",
+      "title": "Missionstypen",
+      "icon": "🛸",
+      "content": "## Die fünf Missionstypen\n\n### 1. Angriff ⚔️\n- **Ziel**: Feindliche Kolonie erobern oder plündern\n- **Dauer**: 5 Sekunden pro Hex-Entfernung\n- **Risiko**: Sehr hoch - deine Schiffe können zerstört werden\n- **Gewinn**: Ressourcen, Planetenkontrolle, Macht\n- **Kosten**: Schiffe und Verluste\n\n### 2. Transport 🚚\n- **Ziel**: Ressourcen zu anderen Planeten bringen\n- **Dauer**: 8 Sekunden pro Hex\n- **Risiko**: Mittelhoch - kann unterwegs angegriffen werden\n- **Gewinn**: Flexible Ressourcen-Verwaltung\n- **Kosten**: Schiffe, Zeit\n\n### 3. Spionage 🕵️\n- **Ziel**: Gegnerische Positionen aufklären\n- **Dauer**: 3 Sekunden pro Hex\n- **Risiko**: Niedrig - Spionageschiffe sind schnell\n- **Gewinn**: Intel über Gegner\n- **Kosten**: Wenige Schiffe nötig\n\n### 4. Stationierung 📍\n- **Ziel**: Flotte auf Planeten stationieren\n- **Dauer**: 6 Sekunden pro Hex\n- **Risiko**: Mittel - Schiffe sind defensiv positioniert\n- **Gewinn**: Defensive Stärke\n- **Kosten**: Schiffe können nicht woanders eingesetzt werden\n\n### 5. Kolonisierung 🏗️\n- **Ziel**: Neue Planeten für Ressourcenproduktion besiedeln\n- **Dauer**: 10 Sekunden pro Hex\n- **Risiko**: Mittel - langsam und anfällig\n- **Gewinn**: Neue Produktionsquelle\n- **Kosten**: Kolonisten, Zeit, Ressourcen\n\n## Missionsplanung\nBedenke:\n- Je näher der Zielplanet, desto schneller die Mission\n- Größere Armeen sind sicherer, brauchen aber mehr Ressourcen\n- Spionage immer zuerst - wisse, was du angreifst",
+      "searchTags": ["missionen", "angriff", "transport", "spionage", "stationierung", "kolonisierung", "militär"]
+    },
+    {
+      "id": "gebaeude-basics",
+      "category": "buildings",
+      "title": "Gebäude-Grundlagen",
+      "icon": "🏢",
+      "content": "## Wie Gebäude funktionieren\n\n### Gebäude bauen\n1. Gehe zu \"Gebäude\"-Tab\n2. Wähle ein Gebäude aus\n3. Klicke \"Bauen\"\n4. Gebäude wird in Bauschlange eingefügt\n5. Nach Bauzeit ist es fertig und produziert\n\n### Gebäude verbessern\n- Jedes Gebäude kann auf ein neues Level upgradet werden\n- Höhere Level = bessere Produktion und mehr Kosten\n- Upgrade kostet Ressourcen und Zeit\n\n### Arten von Gebäuden\n\n#### Produktionsgebäude\n- Produzieren Ressourcen kontinuierlich\n- Beispiele: Minen, Kristalllabore, Chemiefabriken\n- Mehr Level = schneller Produktion\n\n#### Energiegebäude\n- Produzieren Kesseldruck (Energie)\n- Beispiele: Dampfgeneratoren, Sonnenkollektoren\n- Essentiell für eine funktionierende Kolonie\n\n#### Speichergebäude\n- Lagern Ressourcen\n- Beispiele: Lagerhäuser, Energiespeicher\n- Begrenzter Platz - muss ausgebaut werden\n\n#### Militärgebäude\n- Trainieren Einheiten oder bauen Schiffe\n- Beispiele: Werft, Kaserne\n- Notwendig für Verteidigung und Angriff\n\n#### Utility-Gebäude\n- Verschiedene Funktionen\n- Beispiele: Rathaus, Marktplatz\n- Gibt passive Boni\n\n## Bauschlange-Management\n- Du kannst mehrere Gebäude gleichzeitig bauen (je nach Kapazität)\n- Klicke auf Gebäude in der Schlange, um Prioritäten zu ändern\n- Abbrechen kostet einen Teil der Ressourcen zurück",
+      "searchTags": ["gebäude", "bauen", "upgrade", "produktion", "fabrik", "mine", "lager"]
+    },
+    {
+      "id": "military-ships",
+      "category": "missions",
+      "title": "Schiffe und Militär",
+      "icon": "⚓",
+      "content": "## Schiffe bauen\n\n### Wo man Schiffe baut\n1. Gehe zu \"Werft\"-Tab\n2. Wähle einen Schiff-Typ aus\n3. Gib Menge ein\n4. Bestätige mit Ressourcen-Kosten\n5. Schiffe werden gebaut und sind bereit\n\n### Schiff-Typen\n\n#### Scout (Aufklärung) 🔭\n- **Speed**: Sehr schnell\n- **Kampf**: Schwach\n- **Cargo**: Klein\n- **Zweck**: Spionage, Kundschaften\n- **Kosten**: Niedrig\n\n#### Transporter 📦\n- **Speed**: Mittel\n- **Kampf**: Sehr schwach\n- **Cargo**: Riesig\n- **Zweck**: Ressourcen transportieren\n- **Kosten**: Niedrig\n\n#### Jäger ⚔️\n- **Speed**: Schnell\n- **Kampf**: Stark\n- **Cargo**: Klein\n- **Zweck**: Luftüberlegenheit\n- **Kosten**: Mittel\n\n#### Kreuzer 🛡️\n- **Speed**: Mittel\n- **Kampf**: Sehr stark\n- **Cargo**: Mittel\n- **Zweck**: Hauptkampfschiff\n- **Kosten**: Hoch\n\n#### Dreadnought 🎆\n- **Speed**: Langsam\n- **Kampf**: Überwältigend\n- **Cargo**: Klein\n- **Zweck**: Zerstörer von Flotten\n- **Kosten**: Sehr hoch\n\n## Kampf-Grundlagen\n- Schiffe mit höherer Kampfkraft gewinnen Kämpfe\n- Überraschung und Zahlenvorteil sind entscheidend\n- Verloren gegangene Schiffe sind weg - baue neue\n- Taktische Rückzüge sind manchmal klüger als Kamikaze-Angriffe",
+      "searchTags": ["schiffe", "werft", "militär", "jäger", "kreuzer", "dreadnought", "kampf"]
+    },
+    {
+      "id": "research-tree",
+      "category": "research",
+      "title": "Forschungsbaum",
+      "icon": "🧬",
+      "content": "## Technologien erforschen\n\n### Forschung starten\n1. Gehe zum \"Forschung\"-Tab\n2. Wähle eine Technologie aus, die du erforschen möchtest\n3. Klicke \"Erforschen\"\n4. Technologie wird erforscht (Zeit + Ressourcen)\n5. Nach Abschluss sind die Boni verfügbar\n\n### Technologie-Kategorien\n\n#### Militär 🔫\n- Erhöht Schiff-Kampfkraft\n- Verbessert Schiff-HP\n- Schnellere Schiff-Produktion\n- **Beispiele**: Stahlrüstung, Panzerkanonentech\n\n#### Wirtschaft 💰\n- Erhöht Ressourcen-Produktion\n- Senkt Bau-Kosten\n- Erhöht Speicher-Kapazität\n- **Beispiele**: Bergbau-Effizienz, Industrialisierung\n\n#### Energie ⚡\n- Erhöht Energie-Produktion\n- Senkt Energie-Verbrauch\n- Bessere Speicherung\n- **Beispiele**: Dampf-Optimierung, Überladungs-Tech\n\n#### Raumfahrt 🚀\n- Schnellere Missionen\n- Bessere Spionage\n- Weitere Reichweite\n- **Beispiele**: Warp-Drive, Schiff-Beschleunigung\n\n## Forschungs-Tipps\n- Forsche wirtschaftliche Technologien zuerst - sie ermöglichen schnellere Expansion\n- Militärische Tech ist wichtig, aber erst nach einer stabilen Basis\n- Prioritäre Technologie: Bergbau-Effizienz\n- Nutze Tech-Tree-Dependenzen: Manche Tech braucht andere als Voraussetzung",
+      "searchTags": ["forschung", "technologie", "techtree", "militär", "wirtschaft", "energie", "raumfahrt"]
+    },
+    {
+      "id": "beginner-guide",
+      "category": "guides",
+      "title": "Anfänger-Roadmap",
+      "icon": "🗺️",
+      "content": "## Deine ersten Stunden\n\n### Minute 1-5: Setup\n1. Wähle einen Planeten in einer sicheren Region\n2. Nenne deine Kolonie etwas Episches\n3. Schaue dir dein Startinventar an\n4. Übersicht-Tab erkunden\n\n### Minute 5-15: Erste Gebäude\n1. **Erste Priorität**: Baue einen Dampfgenerator (Energie)\n2. **Zweite Priorität**: Baue eine Orichalkum-Mine\n3. **Dritte Priorität**: Baue ein Lagerhaus (wenn Ressourcen voll sind)\n4. Während die Gebäude bauen: Forsche \"Bergbau-Effizienz\"\n\n### Minute 15-30: Expansion\n1. Wenn erste Mine Level 2+ ist, baue eine zweite Mine\n2. Baue einen Energiespeicher (nicht die Ressourcen vergessen!)\n3. Beginne, einen Kristall-Labor zu bauen\n4. Trainiere erste Spionageschiffe\n\n### Minute 30-60: Stabilisierung\n1. Sichere deine Energie-Produktion - baue mehr Generatoren wenn nötig\n2. Baue dein Lagerhaus auf Level 2-3\n3. Erkunde die nahegelegenen Planeten mit Spionageschiffe\n4. Forsche \"Industrialisierung\" wenn du die Basis stabil hast\n\n### Minute 60-120: Aktion\n1. Siedle auf einem zweiten Planeten an\n2. Trainiere deine erste Combat-Flotte\n3. Schließe dich einer Allianz an\n4. Beginne, gegen andere Spieler zu konkurrieren\n\n## Wichtigste Tipps\n- **Energie ist König**: Bau früh Generatoren\n- **Ressourcen liefern Macht**: Investiere in Minen\n- **Langsam und stetig**: Keine Eile - Steampunk-MMOs sind Ausdauer-Spiele\n- **Spioniere zuerst**: Attacker unvorbereitet zu erwischen ist schwerer\n- **Allianze hilft**: Finde Spieler, die zusammen expandieren",
+      "searchTags": ["anfänger", "guide", "tutorial", "start", "erste schritte", "anfängertipps"]
+    },
+    {
+      "id": "military-guide",
+      "category": "guides",
+      "title": "Militär-Build Guide",
+      "icon": "🎖️",
+      "content": "## Auf dem Kriegspfad\n\nWenn du eine militärische Civilization aufbauen möchtest:\n\n### Phase 1: Vorbereitung (0-30 Minuten)\n1. **Sichere deine Basis**: Baue 3-4 Energiegeneratoren\n2. **Produziere Ressourcen**: 2-3 Minen pro Ressourcentyp\n3. **Trainiere Scouts**: 5-10 Aufklärungsschiffe\n4. **Erkunde die Region**: Finde schwache Gegner\n5. **Wähle ein Ziel**: Einen langsamen Spieler ohne Militär\n\n### Phase 2: Aufbau (30-90 Minuten)\n1. **Baue eine Werft**: Dein Kampfzentrum\n2. **Trainiere Jäger**: 10-20 Combat-Schiffe\n3. **Forsche Militär-Tech**: Rüstung, Waffen-Upgrades\n4. **Sichere deine Flotte**: Stationniere Schiffe zur Verteidigung\n5. **Akkumuliere Ressourcen**: Für die große Invasion\n\n### Phase 3: Offensive (90+ Minuten)\n1. **Spioniere das Ziel**: Schicke Scouts zum Gegner\n2. **Berechne die Chance**: Hast du genug Schiffe?\n3. **Baue noch 20-30 Schiffe auf**: Zahlvorteil ist wichtig\n4. **Stationiere Vorräte**: Transport mit Ressourcen für Nach-Kampf-Logistik\n5. **Angriff!**: Schicke die Flotte\n6. **Plündern**: Nach Sieg Ressourcen nehmen\n\n## Kampf-Taktiken\n- **Zahlenvorteil**: 2:1 Verhältnis ist sicherer als 1:1\n- **Überraschung**: Angriffe nachts wenn Gegner nicht aktiv\n- **Diversifizierung**: Mix aus Jäger und Kreuzer\n- **Rückzug**: Wenn Verluste zu hoch sind, Flotte retten\n- **Wiederholung**: Nach erster Niederlage schnell wieder angreifen\n\n## Langfristige Militär-Strategie\n- **Verbünde**: Team mit Allianz-Membern gegen gemeinsame Feinde\n- **Abschreckung**: Halte eine dominante Flotte sichtbar\n- **Expansion**: Erobere mehrere Planeten für Ressourcen-Dominanz\n- **Tech-Vorteil**: Erforscht besser Militär-Tech als Gegner\n- **Logistik**: Habe immer genug Ressourcen für Replacements",
+      "searchTags": ["militär", "krieg", "strategie", "angriff", "flotte", "invasion", "kampf"]
+    },
+    {
+      "id": "economy-guide",
+      "category": "guides",
+      "title": "Wirtschafts-Build Guide",
+      "icon": "💼",
+      "content": "## Der Weg des Reichtums\n\nWenn du eine ökonomische Großmacht aufbauen möchtest:\n\n### Phase 1: Grundlagen (0-20 Minuten)\n1. **Baue viele Minen**: 4-5 Orichalkum-Minen\n2. **Energieversorgung**: 3-4 Generatoren\n3. **Speicher**: 2-3 Lagerhäuser\n4. **Forsche Bergbau-Effizienz**: +30% Produktion\n5. **Überwache deine Ressourcen**: Kein Verschenken!\n\n### Phase 2: Spezialisierung (20-60 Minuten)\n1. **Identifiziere Best-Case Planeten**: Höchste Biom-Boni\n2. **Kolonisiere strategisch**: Nutze Messsingwüsten für Orichalkum\n3. **Baue Produktions-Cluster**: Mehrere Minen an einem Ort\n4. **Lagerhäuser upgraden**: Speicher-Kapazität ist nicht verhandelbar\n5. **Wirtschafts-Tech erforschen**: Alle Effizienz-Boosts nehmen\n\n### Phase 3: Expansion (60-120 Minuten)\n1. **Multi-Planet-Wirtschaft**: 3-5 Kolonien auf verschiedenen Biomen\n2. **Transport-Netzwerk**: Ressourcen-Austausch zwischen Planeten\n3. **Spezialisten-Planeten**: Ein Planet für Orichalkum, einer für Kristalle, etc.\n4. **Investiere in Forschung**: Technologien erhöhen Ressourcen\n5. **Baue ein Imperium**: Mit Reichtum kommte Macht\n\n## Wirtschafts-Tipps\n- **Balance**: Nicht zu viel in Minen bauen - auch Lagerhäuser brauchen Platz\n- **Tech-Priorität**: Bergbau-Effizienz > Industrie > Speicher-Erweiterung\n- **Handel**: Tausche mit anderen Spielern wenn es profitable ist\n- **Diversifizierung**: Nicht alles auf eine Ressource setzen\n- **Timing**: Baue Produktionsgebäude in Pausen zwischen Forschung\n\n## Warum Wirtschaft gewinnt\n- Mit großem Reichtum kannst du riesige Armeen bauen\n- Wirtschaft is die Basis für alle Aktivitäten\n- Andere werden mit dir handeln wollen\n- Allianz-Mitglied mit besten Ressourcen = höchster Status\n- Langfristig: Reichtum > Militär",
+      "searchTags": ["wirtschaft", "ressourcen", "produktion", "handel", "reichtum", "mining", "fabrik"]
+    },
+    {
+      "id": "faq-alliance",
+      "category": "faq",
+      "title": "Allianz FAQ",
+      "icon": "🤝",
+      "content": "## Häufige Allianz-Fragen\n\n### Was ist eine Allianz?\nEine Allianz ist ein Bündnis von Spielern, die zusammen spielen. Sie können:\n- Ressourcen teilen\n- Sich militärisch unterstützen\n- Gemeinsame Ziele verfolgen\n- In Chat-Kanälen kommunizieren\n\n### Wie trete ich einer Allianz bei?\n1. Gehe zu \"Bande\"-Tab\n2. Schaue verfügbare Allianzen\n3. Klicke \"Beitreten\"\n4. Warte auf Akzeptanz oder automatische Aufnahme\n\n### Wie gründe ich eine Allianz?\n1. Gehe zu \"Bande\"-Tab\n2. Klicke \"Neue Allianz gründen\"\n3. Gib einen Namen und Tag ein (z.B. \"ABC\")\n4. Zahle Gründungskosten (Ressourcen)\n5. Du bist jetzt Gründer und Anführer\n\n### Was kostet es?\nGründung: 1000 Orichalkum, 500 Fokuskristalle\nMitgliedschaft: Kostenlos (können optional Gebühren haben)\n\n### Kann ich die Allianz verlassen?\nJa, klicke \"Verlassen\" - aber du verlierst alle Allianz-Boni und Zugang zum privaten Chat.\n\n### Was bringt mir eine Allianz?\n- **Militärische Unterstützung**: Verbündete helfen bei Verteidigung\n- **Ressourcen-Hilfe**: Mitglieder können teilen/leihen\n- **Diplomatie**: Pakte mit anderen Allianzen\n- **Chat**: Koordination und soziales Spielen\n- **Conquest**: Zusammen größere Gebiete erobern",
+      "searchTags": ["allianz", "bande", "gruppe", "bündnis", "chat", "diplomatie", "mitgliedschaft"]
+    },
+    {
+      "id": "faq-combat",
+      "category": "faq",
+      "title": "Kampf-FAQ",
+      "icon": "⚔️",
+      "content": "## Häufige Kampf-Fragen\n\n### Wie funktioniert ein Kampf?\n1. Du schickst Schiffe zum gegnerischen Planeten\n2. Schiffe treffen dort ein und kämpfen\n3. Schlacht wird mit Würfeln simuliert (Glück + Stärke)\n4. Gewinner erhält Ressourcen-Plunder\n5. Verlierer verliert Schiffe\n\n### Kann ich Schiffe retten, wenn sie verlieren?\nNein - zerstörte Schiffe sind weg. Aber du kannst restliche Schiffe mit \"Rückzug\" evakuieren.\n\n### Was ist ein Rückzug?\nWenn deine Flotte im Kampf ist und verliert:\n1. Klick \"Rückzug\"\n2. 30% der Schiffe entkommen\n3. 70% werden zerstört\n4. Besser als Totalverlust!\n\n### Wie viele Schiffe brauche ich zum Angriff?\nEs kommt an auf:\n- **Gegner-Stärke**: Spioniere zuerst!\n- **Dein Ziel**: Plünderung (weniger Schiffe) vs. Eroberung (mehr Schiffe)\n- **Zahlenvorteil**: 1.5-2x die gegnerische Kraft ist sicherer\n\n### Was ist Verteidigung?\nWenn dein Planet angegriffen wird:\n1. Stationierte Schiffe verteidigen automatisch\n2. Befestigungen helfen mit Defensiv-Bonus\n3. Wenn deine Flotte stärker ist, gewinnst du\n4. Wenn du verlierst, können Ressourcen geplündert werden\n\n### Kann ich einen Planeten verlieren?\nJa - wenn dein Planetenschutz durchbrochen wird:\n1. Gegner erobert den Planeten\n2. Alle Gebäude gehören jetzt dem Gegner\n3. Deine Ressourcen auf diesem Planeten sind weg\n4. Du kannst ihn später zurückerobert (schwierig)\n\n### Wie schütze ich mich?\n- **Militär**: Starke Flotte abschreckend\n- **Allianz**: Mitglieder können helfen\n- **Verstecken**: Planeten in unauffälligen Regionen\n- **Aktivität**: Aktive Spieler werden weniger angegriffen\n- **Diplomatie**: Gute Beziehungen mit starken Spielern",
+      "searchTags": ["kampf", "angriff", "verteidigung", "flotte", "krieg", "verlust", "rückzug"]
+    },
+    {
+      "id": "faq-resources",
+      "category": "faq",
+      "title": "Ressourcen-FAQ",
+      "icon": "💎",
+      "content": "## Häufige Ressourcen-Fragen\n\n### Ich habe keine Ressourcen mehr - was nun?\n1. Baue mehr Minen/Fabriken\n2. Warte auf Produktion (dauert Zeit)\n3. Bete deine Allianz an\n4. Oder spiele sparsamer\n\n### Meine Lagerbestände sind voll - was passiert?\nWenn deine Lager voll sind:\n- Neue Produktion ist blockiert\n- Du musst Lagerhaus-Kapazität erhöhen\n- Oder Ressourcen verschwenden (schlecht!)\n\n### Wie erhöhe ich Lager-Kapazität?\n1. Baue Lagerhäuser\n2. Upgrade Lagerhäuser auf höhere Level\n3. Forsche \"Speicher-Erweiterung\" Tech\n4. Jeder Punkt zählt!\n\n### Warum produziere ich so wenig?\nMögliche Gründe:\n- Gebäude sind zu niedrig Level\n- Energiemangel bremst Produktion\n- Falsche Biom-Wahl\n- Forsche Effizienz-Techs!\n\n### Kann ich Ressourcen handeln?\nJa! Mit deiner Allianz:\n1. Frag höflich im Allianz-Chat\n2. Verhandle Austausch\n3. Transfer zu verabredeter Zeit\n4. Danke sagen ist Höflichkeit!\n\n### Sind Ressourcen begrenzt?\nNein - sie werden kontinuierlich produziert. Das Spiel ist nicht um Plünderung, sondern um:\n- Effiziente Produktion\n- Kluges Investieren\n- Strategische Entwicklung\n\n### Welche Ressource ist wertvoll?\n- **Orichalkum**: Basis für alles - häufig\n- **Fokuskristalle**: Seltener, für Tech - mittelhoch\n- **Vitriol**: Sehr selten, für Militär - am wertvollsten",
+      "searchTags": ["ressourcen", "lager", "produktion", "mangel", "handel", "kapazität", "rohstoffe"]
+    }
+  ]
+}
