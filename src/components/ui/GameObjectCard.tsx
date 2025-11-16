@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Resources, ResourceType } from '@/types';
 import { MAX_BUILD_QUEUE_LENGTH } from '@/constants';
+import { formatDuration } from '@/lib/ui/formatting';
 
 /**
  * GameObjectCard - Spielkartenformat für Gebäude, Schiffe, Forschung
@@ -42,27 +43,6 @@ const RESOURCE_SHORT: Record<ResourceType, string> = {
   [ResourceType.Orichalkum]: 'Or',
   [ResourceType.Fokuskristalle]: 'Kr',
   [ResourceType.Vitriol]: 'Vt',
-};
-
-const formatTime = (seconds: number): string => {
-  if (seconds < 0) seconds = 0;
-  if (seconds >= 5940) {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60)
-      .toString()
-      .padStart(2, '0');
-    const secs = Math.floor(seconds % 60)
-      .toString()
-      .padStart(2, '0');
-    return `${hours}:${minutes}:${secs}`;
-  }
-  const minutes = Math.floor(seconds / 60)
-    .toString()
-    .padStart(2, '0');
-  const secs = Math.floor(seconds % 60)
-    .toString()
-    .padStart(2, '0');
-  return `${minutes}:${secs}`;
 };
 
 const GameObjectCard: React.FC<GameObjectCardProps> = ({
@@ -180,7 +160,7 @@ const GameObjectCard: React.FC<GameObjectCardProps> = ({
             )}
           </div>
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-300">⏱️ {formatTime(buildTime)}</span>
+            <span className="text-xs text-gray-300">⏱️ {formatDuration(Math.floor(buildTime / 1000))}</span>
             <button
               type="button"
               onClick={(e) => {
@@ -338,7 +318,7 @@ const GameObjectCard: React.FC<GameObjectCardProps> = ({
             </div>
           </div>
           <div className="mt-3 text-center text-sm text-gray-300">
-            Bauzeit: <span className="font-semibold text-yellow-200">{formatTime(buildTime)}</span>
+            Bauzeit: <span className="font-semibold text-yellow-200">{formatDuration(buildTime)}</span>
           </div>
           {!canAfford && <div className="mt-2 text-center text-xs text-red-400">⚠️ Nicht genug Ressourcen</div>}
         </div>
