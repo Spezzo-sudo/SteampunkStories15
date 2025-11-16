@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Essential Commands
 ```bash
 npm install              # Install dependencies
-npm run dev             # Start Vite dev server (http://localhost:5173)
+npm run dev             # Start Vite dev server (http://localhost:3000)
 npm run build           # Production build (must pass before committing)
 npm run typecheck       # Run TypeScript type checking
 npm run lint            # Run ESLint
@@ -50,6 +50,9 @@ src/
 │   ├── layout/       # App shell (LayoutSwitch, LeftNav, TopBar)
 │   ├── views/        # Main page views (GalaxyView, BuildingsView, etc.)
 │   ├── galaxy/       # Galaxy map system (HexMap, tiles, modals)
+│   │   ├── terrain/  # Terrain rendering (HexTerrainCanvas)
+│   │   ├── tiles/    # Tile-specific components
+│   │   └── popups/   # Tile action popups and modals
 │   ├── alliance/     # Alliance UI
 │   ├── messaging/    # Chat & messaging
 │   ├── auth/         # Login screen
@@ -62,12 +65,26 @@ src/
 │   ├── hexgrid/      # Hexagon math & coordinate systems
 │   ├── api/          # Supabase API wrappers
 │   ├── movement/     # Fleet pathfinding & movement
-│   └── *.ts          # Economy, missions, progression, etc.
+│   └── *.ts          # Economy, missions, progression, requirements, etc.
 ├── services/         # Supabase integration layer
+│   └── supabase/     # Supabase API modules
 ├── data/             # Game data & types (units, factions)
 ├── constants/        # Game configuration & balancing
+│   ├── units.ts      # Unit definitions
+│   ├── biomes.ts     # Biome configurations
+│   ├── techTree.ts   # Technology tree
+│   ├── map.ts        # Map settings
+│   └── missions.ts   # Mission configurations
 ├── config/           # Environment & platform config
+│   ├── supabaseConfig.ts  # Supabase client configuration
+│   ├── authConfig.ts      # Authentication settings
+│   └── mapConfig.ts       # Map rendering settings
 ├── types/            # TypeScript type definitions
+│   ├── biome.ts      # Biome-related types
+│   ├── convoy.ts     # Convoy/fleet types
+│   └── map.ts        # Map-related types
+├── pages/            # API routes (for backend integration)
+│   └── api/          # API endpoint implementations
 └── styles/           # Design tokens
 
 public/
@@ -208,6 +225,11 @@ Performance optimizations:
 - `settlementApi.ts` - Settlement management
 - `buildingApi.ts` - Building construction
 
+**Additional API Modules** ([src/lib/api/](src/lib/api/)):
+- `client.ts` - HTTP client wrapper for API calls
+- `alliances.ts` - Alliance-related API endpoints
+- `directory.ts` - Player/alliance directory queries
+
 ### Authentication Flow
 
 - **Method**: Email/Password via Supabase Auth
@@ -279,6 +301,11 @@ Core modules:
 - `pathfinding.ts` - A* pathfinding for convoys
 - `combat.ts` - Battle resolution logic
 - `biomeStyle.ts` - Biome visual theming
+- `requirements.ts` - Tech tree requirement validation system for buildings, research, ships
+- `scouting.ts` - Scouting and reconnaissance mechanics
+- `regionGen.ts` - Procedural region generation
+- `color.ts` - Color utilities for UI theming
+- `utils.ts` - General utility functions
 
 ### Tiled Map Integration
 
@@ -291,6 +318,37 @@ Hex terrain loaded from Tiled map editor exports (`.tmj` files):
 5. **Rendering**: `HexTerrainCanvas.tsx` draws on canvas overlay
 
 See README section "Hex-Map aus Tiled integrieren" for full asset pipeline details.
+
+## Requirements System
+
+The game includes a centralized requirement validation system in [src/lib/requirements.ts](src/lib/requirements.ts) that checks prerequisites for:
+
+- **Buildings** - Validates building level requirements, research prerequisites, and energy constraints
+- **Research** - Ensures required buildings and prior research are completed
+- **Ships** - Checks Werft level and required technologies
+- **Missions** - Validates mission-specific requirements
+
+**Key Functions**:
+```typescript
+canResearch(researchId, currentResearch, currentBuildings): ValidationResult
+canBuild(buildingId, currentBuildings, currentResearch, energy): ValidationResult
+canBuildShip(shipId, werftLevel, currentResearch): ValidationResult
+canLaunchMission(missionType, currentResearch): ValidationResult
+```
+
+**Validation Result Format**:
+```typescript
+interface ValidationResult {
+  canDo: boolean;        // Whether action is possible
+  missing: string[];     // List of missing requirements
+  energyBlocked?: boolean; // If blocked due to insufficient energy
+}
+```
+
+This system powers the UI feedback in:
+- `RequirementBadge.tsx` - Visual indicators for locked/unlocked features
+- `GameObjectCard.tsx` - Building/research cards with requirement display
+- `CollapsibleCard.tsx` - Expandable cards with nested requirement trees
 
 ## Important Conventions
 
@@ -416,12 +474,59 @@ vi.mock('@/services/supabase', () => ({
 3. Import and add case to `MainView.tsx` switch statement
 4. Add navigation button to `LeftNav.tsx` or `MobileNav.tsx`
 
+## Utility Scripts
+
+Scripts are located in the `scripts/` directory:
+
+- `seedSupabase.ts` - Seeds Supabase with initial regions and tiles data
+- `clearSupabase.ts` - Clears all data from Supabase (use with caution!)
+- `checkBiomes.ts` - Validates biome data integrity
+- `fixBiomeCodes.ts` - Repairs biome code mismatches
+- `setup.sh` - Initial setup script (creates `.env.local`, installs deps)
+- `seed.sql` - SQL seed data for direct database import
+
+Run TypeScript scripts with:
+```bash
+tsx scripts/scriptName.ts
+```
+
+## UI Component Library
+
+The project uses a custom UI library built on Radix UI primitives:
+
+**Core Components** ([src/components/ui/](src/components/ui/)):
+- `Button.tsx` - Primary action buttons with variants
+- `GameCard.tsx` - Card component for game objects (buildings, research)
+- `GameObjectCard.tsx` - Enhanced card with requirement validation and actions
+- `CollapsibleCard.tsx` - Expandable/collapsible card for nested content
+- `RequirementBadge.tsx` - Visual badge showing requirement status (locked/unlocked)
+- `ProgressBar.tsx` - Progress indicator for builds/research
+- `ToastViewport.tsx` - Toast notification system
+- `BottomSheet.tsx` - Mobile bottom sheet for modals
+- `LoadingOverlay.tsx` - Full-screen loading indicator
+- `StickyTopbarShadow.tsx` - Shadow effect for sticky headers
+
+**Design Principles**:
+- Steampunk aesthetic with brass/copper color palette
+- Card-based layout for consistent spacing
+- Responsive design with mobile-first approach
+- Accessible components following ARIA guidelines
+
 ## Project Status & Next Steps
 
 See [README.md](README.md) for current implementation status and open tasks.
 
-Key areas for future work:
+**Recent Updates**:
+- ✅ WerftView activated with full store integration
+- ✅ Redesigned UI to card-based format with Steampunk flavor
+- ✅ Integrated requirements system with UI components
+- ✅ Added CollapsibleCard and RequirementBadge components
+- ✅ Fixed energy calculation multiplier bug
+
+**Key areas for future work**:
 - Galaxy and messaging performance optimization under high load
 - Connect alliance and chat flows to real backend endpoints
 - Expand gameplay effects (research, missions) and UI feedback layers
 - Implement advanced pathfinding for multi-leg convoy missions
+- Add combat resolution UI and battle reports
+- Implement alliance diplomacy features (pacts, wars)
