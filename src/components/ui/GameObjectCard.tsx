@@ -108,7 +108,7 @@ const GameObjectCard: React.FC<GameObjectCardProps> = ({
           <div className="absolute inset-0 flex items-start justify-between p-3">
             <div className="flex items-center gap-2">
               <span className="text-3xl drop-shadow-lg">{icon}</span>
-              <h3 className="max-w-[12ch] font-cinzel font-bold text-yellow-300 drop-shadow-lg">{title}</h3>
+              <h3 className="max-w-[180px] break-words font-cinzel text-sm font-bold leading-tight text-yellow-300 drop-shadow-lg md:text-base">{title}</h3>
             </div>
             <div className="flex flex-col items-end gap-1">
               <span className="rounded-lg bg-black/70 px-2 py-1 text-xs font-semibold text-yellow-300 backdrop-blur-sm">
@@ -127,7 +127,7 @@ const GameObjectCard: React.FC<GameObjectCardProps> = ({
         </div>
 
         {/* Flavor Text */}
-        <p className="line-clamp-3 flex-1 text-xs leading-relaxed italic text-gray-200">{flavorText}</p>
+        <p className="line-clamp-4 flex-1 text-xs leading-relaxed italic text-gray-200">{flavorText}</p>
 
         {/* Stats (Ships only) */}
         {Object.keys(stats).length > 0 && (

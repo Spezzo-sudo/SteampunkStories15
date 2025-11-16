@@ -8,6 +8,133 @@ import { calculateIntelLevel, generateScoutReportData } from '@/lib/scouting';
  */
 
 /**
+ * Finds a random available tile in a specific region.
+ * @param regionId - The region to search in (default: starting region)
+ * @returns A random available tile ID, or null if none found
+ */
+export const findRandomAvailableTile = async (regionId?: string): Promise<string | null> => {
+  try {
+    const supabase = getSupabaseClient();
+
+    // If no regionId specified, use the starting region (0,0)
+    let targetRegionId = regionId;
+    if (!targetRegionId) {
+      const { data: startRegion } = await supabase
+        .from('regions')
+        .select('id')
+        .eq('rq', 0)
+        .eq('rr', 0)
+        .single();
+
+      if (!startRegion) {
+        console.error('[findRandomAvailableTile] Starting region (0,0) not found');
+        return null;
+      }
+      targetRegionId = startRegion.id;
+    }
+
+    // Find all unoccupied tiles in the region
+    const { data: availableTiles, error } = await supabase
+      .from('tiles')
+      .select('id')
+      .eq('region_id', targetRegionId)
+      .is('owner_id', null)
+      .is('settlement_id', null);
+
+    if (error) {
+      console.error('[findRandomAvailableTile] Error fetching tiles:', error);
+      return null;
+    }
+
+    if (!availableTiles || availableTiles.length === 0) {
+      console.warn('[findRandomAvailableTile] No available tiles found in region', targetRegionId);
+      return null;
+    }
+
+    // Pick a random tile
+    const randomIndex = Math.floor(Math.random() * availableTiles.length);
+    return availableTiles[randomIndex].id;
+  } catch (err) {
+    console.error('[findRandomAvailableTile] Error:', err);
+    return null;
+  }
+};
+
+/**
+ * Finds a random available tile near a referrer's settlement.
+ * @param referrerPlayerId - The player ID of the referrer
+ * @param maxDistance - Maximum hex distance from referrer (default: 5)
+ * @returns A random available tile ID near the referrer, or null if none found
+ */
+export const findTileNearReferrer = async (
+  referrerPlayerId: string,
+  maxDistance = 5
+): Promise<string | null> => {
+  try {
+    const supabase = getSupabaseClient();
+
+    // Get referrer's first settlement
+    const { data: referrerSettlement } = await supabase
+      .from('settlements')
+      .select('tile_id')
+      .eq('player_id', referrerPlayerId)
+      .limit(1)
+      .single();
+
+    if (!referrerSettlement) {
+      console.warn('[findTileNearReferrer] Referrer has no settlements, using random tile');
+      return findRandomAvailableTile();
+    }
+
+    // Get the referrer's tile coordinates
+    const { data: referrerTile } = await supabase
+      .from('tiles')
+      .select('q, r, region_id')
+      .eq('id', referrerSettlement.tile_id)
+      .single();
+
+    if (!referrerTile) {
+      console.warn('[findTileNearReferrer] Referrer tile not found, using random tile');
+      return findRandomAvailableTile();
+    }
+
+    // Find available tiles in the same region
+    const { data: availableTiles, error } = await supabase
+      .from('tiles')
+      .select('id, q, r')
+      .eq('region_id', referrerTile.region_id)
+      .is('owner_id', null)
+      .is('settlement_id', null);
+
+    if (error || !availableTiles || availableTiles.length === 0) {
+      console.warn('[findTileNearReferrer] No available tiles in region, using random tile');
+      return findRandomAvailableTile();
+    }
+
+    // Filter tiles within maxDistance using axial distance formula
+    const nearbyTiles = availableTiles.filter((tile) => {
+      const dq = Math.abs(tile.q - referrerTile.q);
+      const dr = Math.abs(tile.r - referrerTile.r);
+      const distance = Math.max(dq, dr, Math.abs(dq - dr));
+      return distance <= maxDistance;
+    });
+
+    if (nearbyTiles.length === 0) {
+      console.warn('[findTileNearReferrer] No tiles within distance, using random tile in region');
+      const randomIndex = Math.floor(Math.random() * availableTiles.length);
+      return availableTiles[randomIndex].id;
+    }
+
+    // Pick a random nearby tile
+    const randomIndex = Math.floor(Math.random() * nearbyTiles.length);
+    return nearbyTiles[randomIndex].id;
+  } catch (err) {
+    console.error('[findTileNearReferrer] Error:', err);
+    return findRandomAvailableTile();
+  }
+};
+
+/**
  * Get all settlements belonging to a player.
  */
 export const getPlayerSettlements = async (
@@ -121,6 +248,60 @@ export const getAvailableShips = async (settlementId: string): Promise<Ship[]> =
   } catch (err) {
     console.error('[settlementApi] getAvailableShips error:', err);
     return [];
+  }
+};
+
+/**
+ * Creates the player's first home settlement automatically.
+ * Uses referral system if referrerId is provided, otherwise random location.
+ * @param playerId - The player's ID
+ * @param playerName - The player's name (for settlement naming)
+ * @param referrerId - Optional referrer player ID for nearby placement
+ * @returns The created settlement, or null if failed
+ */
+export const createHomeSettlement = async (
+  playerId: string,
+  playerName: string,
+  referrerId?: string
+): Promise<MilitarySettlement | null> => {
+  try {
+    console.log(`[createHomeSettlement] Creating home settlement for player ${playerId}`, {
+      referrerId,
+    });
+
+    // Check if player already has a settlement
+    const existingSettlements = await getPlayerSettlements(playerId);
+    if (existingSettlements.length > 0) {
+      console.warn('[createHomeSettlement] Player already has settlements, skipping creation');
+      return existingSettlements[0];
+    }
+
+    // Find an available tile (near referrer if provided)
+    let tileId: string | null = null;
+    if (referrerId) {
+      tileId = await findTileNearReferrer(referrerId, 5);
+    }
+    if (!tileId) {
+      tileId = await findRandomAvailableTile();
+    }
+
+    if (!tileId) {
+      console.error('[createHomeSettlement] No available tiles found');
+      return null;
+    }
+
+    // Create the settlement
+    const settlementName = `${playerName}'s Heimat`;
+    const settlement = await createSettlement(playerId, tileId, settlementName);
+
+    if (settlement) {
+      console.log(`[createHomeSettlement] Successfully created home settlement at tile ${tileId}`);
+    }
+
+    return settlement;
+  } catch (err) {
+    console.error('[createHomeSettlement] Error:', err);
+    return null;
   }
 };
 
