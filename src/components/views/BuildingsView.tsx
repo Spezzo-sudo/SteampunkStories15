@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { BUILDINGS, RESEARCH } from '@/constants';
-import CollapsibleCard from '@/components/ui/CollapsibleCard';
+import GameObjectCard from '@/components/ui/GameObjectCard';
 import { Building } from '@/types';
 import { canBuildOrUpgrade } from '@/lib/requirements';
 
@@ -101,7 +101,7 @@ const BuildingsView: React.FC = () => {
         <h2 className="text-[clamp(1.8rem,1.2vw+1.5rem,2.4rem)] font-cinzel text-yellow-300">Gebäudeausbau</h2>
         <p className="text-sm text-gray-300">Klicke auf ein Gebäude für Details oder baue direkt aus.</p>
       </header>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-3">
         {Object.values(BUILDINGS).map((building) => {
           const currentLevel = buildings[building.id] || 0;
           const targetLevel = buildQueue
@@ -130,15 +130,15 @@ const BuildingsView: React.FC = () => {
           );
 
           return (
-            <CollapsibleCard
+            <GameObjectCard
               key={building.id}
               id={building.id}
               icon={getBuildingIcon(building.id)}
               title={building.name}
               level={currentLevel}
               targetLevel={targetLevel}
-              shortDescription={building.description}
-              fullDescription={`${building.description}\n\nDieses Gebäude ist ein essentieller Bestandteil deines Imperiums.`}
+              flavorText={building.flavorText || building.description}
+              fullDescription={`${building.description}\n\n${building.flavorText || ''}`}
               cost={costForNextUpgrade}
               buildTime={buildTime}
               canAfford={affordable}

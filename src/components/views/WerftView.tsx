@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { SHIP_BLUEPRINTS } from '@/constants';
 import { ResourceType } from '@/types';
-import CollapsibleCard from '@/components/ui/CollapsibleCard';
+import GameObjectCard from '@/components/ui/GameObjectCard';
 
 const formatCost = (value: number) => value.toLocaleString('de-DE');
 
@@ -41,42 +41,44 @@ const WerftView: React.FC = () => {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         {/* Schiffe Grid */}
-        <div className="rounded-2xl border border-yellow-800/30 bg-black/45 p-6 shadow-xl">
-          <h3 className="text-[clamp(1.2rem,1vw+1rem,1.6rem)] font-cinzel text-yellow-200">Verfügbare Blueprints</h3>
-          <p className="text-xs text-gray-400">Wähle ein Schiff und lege die Menge fest. Der Bau wird in einem späteren Sprint aktiviert.</p>
-          <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {SHIP_BLUEPRINTS.map((ship) => {
-              const quantity = shipQuantities[ship.id] || 1;
-              return (
-                <CollapsibleCard
-                  key={ship.id}
-                  id={ship.id}
-                  icon={getShipIcon(ship.role)}
-                  title={ship.name}
-                  level={1}
-                  targetLevel={1}
-                  shortDescription={`${ship.role} • ${ship.crew} Crew • ${formatCost(ship.cargo)} Laderaum`}
-                  fullDescription={ship.description}
-                  stats={{
-                    'Hangar-Slots': ship.hangarSlots,
-                    'Crew': ship.crew,
-                    'Laderaum': `${formatCost(ship.cargo)} Einheiten`,
-                  }}
-                  cost={ship.baseCost}
-                  buildTime={ship.buildTimeSeconds}
-                  canAfford={true}
-                  onAction={() => {
-                    /* Wird später aktiviert */
-                  }}
-                  actionLabel="Bauen"
-                  image={ship.image}
-                  imageAlt={`${ship.name} Illustration`}
-                  quantity={quantity}
-                  onQuantityChange={(qty) => handleQuantityChange(ship.id, qty)}
-                  disabled={true}
-                />
-              );
-            })}
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <h3 className="text-[clamp(1.2rem,1vw+1rem,1.6rem)] font-cinzel text-yellow-200">Verfügbare Blueprints</h3>
+            <p className="text-xs text-gray-400">Wähle ein Schiff und lege die Menge fest. Der Bau wird in einem späteren Sprint aktiviert.</p>
+          </div>
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          {SHIP_BLUEPRINTS.map((ship) => {
+            const quantity = shipQuantities[ship.id] || 1;
+            return (
+              <GameObjectCard
+                key={ship.id}
+                id={ship.id}
+                icon={getShipIcon(ship.role)}
+                title={ship.name}
+                level={1}
+                targetLevel={1}
+                flavorText={ship.flavorText || ship.description}
+                fullDescription={`${ship.description}\n\n${ship.flavorText || ''}`}
+                stats={{
+                  'Hangar-Slots': ship.hangarSlots,
+                  'Crew': ship.crew,
+                  'Laderaum': `${formatCost(ship.cargo)} Einheiten`,
+                }}
+                cost={ship.baseCost}
+                buildTime={ship.buildTimeSeconds}
+                canAfford={true}
+                onAction={() => {
+                  /* Wird später aktiviert */
+                }}
+                actionLabel="Bauen"
+                image={ship.image}
+                imageAlt={`${ship.name} Illustration`}
+                quantity={quantity}
+                onQuantityChange={(qty) => handleQuantityChange(ship.id, qty)}
+                disabled={true}
+              />
+            );
+        })}
           </div>
         </div>
 
