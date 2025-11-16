@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "seed:supabase": "tsx scripts/seedSupabase.ts",
-    "reset:world": "tsx scripts/resetWorld.ts"
+    "reset:world": "tsx scripts/resetWorld.ts",
+    "postinstall": "npm rebuild lightningcss --update-binary || true"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",
