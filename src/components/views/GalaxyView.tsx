@@ -8,6 +8,7 @@ import { LoadingOverlay } from '@/components/ui/LoadingOverlay';
 import { useMissionGameLoop } from '@/hooks/useMissionGameLoop';
 import { useTileRealtimeSync } from '@/hooks/useTileRealtimeSync';
 import { useConvoyRealtimeSync } from '@/hooks/useConvoyRealtimeSync';
+import { useBattleRealtimeSync } from '@/hooks/useBattleRealtimeSync';
 
 /** Renders a welcome screen for players who have not yet placed a home base. */
 const WelcomeMode: React.FC = () => (
@@ -48,6 +49,7 @@ export default function GalaxyView(): React.ReactElement {
   // --- Realtime Subscriptions ---
   useTileRealtimeSync(); // Sync tile ownership changes in real-time
   useConvoyRealtimeSync(); // Sync convoy movements and notify on arrivals
+  useBattleRealtimeSync(); // Notify on battle start/end with win/loss results
 
   // --- Effects ---
   // Set worldId in mapStore if not already set

@@ -1,6 +1,8 @@
 import React, { useEffect } from 'react';
 import { useGameTick } from '@/hooks/useGameTick';
 import { useActivityHeartbeat } from '@/hooks/useActivityHeartbeat';
+import { usePlayerRealtimeSync } from '@/hooks/usePlayerRealtimeSync';
+import { useSettlementResourceSync } from '@/hooks/useSettlementResourceSync';
 import LeftNav from '@/components/layout/LeftNav';
 import MobileNav from '@/components/layout/MobileNav';
 import MainView from '@/components/layout/MainView';
@@ -23,6 +25,8 @@ import { useMapStore } from '@/store/mapStore';
 const App: React.FC = () => {
   useGameTick();
   useActivityHeartbeat(); // Send periodic heartbeat to mark player as online
+  usePlayerRealtimeSync(); // Subscribe to player updates (resources, status)
+  useSettlementResourceSync(); // Sync gameStore resources with settlement DB
   const initializeSession = useSessionStore((state) => state.initialize);
   const sessionInitializing = useSessionStore((state) => state.initializing);
   const sessionUser = useSessionStore((state) => state.user);
