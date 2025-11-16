@@ -18,6 +18,7 @@ npm run lint            # Run ESLint
 npm run test            # Run Vitest test suite
 npm run test:watch      # Run tests in watch mode
 npm run seed:supabase   # Seed Supabase database with regions and tiles
+npm run reset:world     # Reset world data in Supabase (caution: destructive)
 ```
 
 ### Running Single Tests
@@ -32,6 +33,13 @@ npm run test:watch -- src/lib/__tests__/               # Watch specific director
 powershell -ExecutionPolicy Bypass -File .\start-game.ps1
 ```
 Automatically installs dependencies and opens browser.
+
+### Database Migrations
+```bash
+supabase db push                # Apply pending migrations to local Supabase
+supabase db pull                # Pull schema changes from remote Supabase
+```
+Migrations are stored in `supabase/migrations/`. Always run `supabase db push` after adding new tables or columns.
 
 ## Architecture Overview
 
@@ -214,8 +222,39 @@ Performance optimizations:
 - `public.alliances` - Alliance data & metadata
 - `public.alliance_members` - Membership tracking
 - `public.messages` - Chat messages (type: global/alliance/dm)
+- `public.shipyard_queue` - Ship construction queue with realtime sync (new in Phase 2)
 
 **Row-Level Security**: All tables have RLS policies restricting access based on auth status and ownership. Check Supabase dashboard → Authentication → Policies for current rules.
+
+### Realtime & Multiplayer Features
+
+The game uses **Supabase Realtime subscriptions** (PostgreSQL NOTIFY/LISTEN) for live updates across players:
+
+**Shipyard Queue Synchronization** ([src/hooks/useShipyardSync.ts](src/hooks/useShipyardSync.ts)):
+- Realtime channel: `realtime:public:shipyard_queue:{settlementId}`
+- Subscribes to INSERT/UPDATE/DELETE events on player's queues
+- Updates `shipyardStore` instantly when other sessions change build orders
+- Handles disconnections with fallback polling every 5s
+
+**Realtime Subscription Pattern**:
+```typescript
+const channel = supabase.channel(`realtime:public:table:${filter}`);
+channel.on('postgres_changes', { event: '*', schema: 'public', table: 'shipyard_queue' }, (payload) => {
+  // Update store with new data
+});
+channel.subscribe();
+```
+
+**Settlement Data Sync** ([src/services/supabase/settlementApi.ts](src/services/supabase/settlementApi.ts)):
+- Real-time updates to settlement ownership, buildings, resources
+- Used by both single-player and multiplayer game loops
+- Fallback: `mapStore.loadRegion()` fetches complete region state if subscription fails
+
+**Key Realtime Tables**:
+- `shipyard_queue` - Ship construction (per settlement)
+- `settlements` - Ownership & resource changes
+- `convoys` - Fleet mission state transitions
+- `messages` - Chat messages (for messaging sync)
 
 **API Integration** ([src/services/supabase/](src/services/supabase/)):
 - `auth.ts` - Login/logout with Supabase auth
@@ -405,28 +444,73 @@ VITE_WORLD_ID=playtest-world
 
 The app validates these on startup. See [src/config/supabaseConfig.ts](src/config/supabaseConfig.ts) for validation logic.
 
-## Troubleshooting
+## Debugging & Testing
 
-### Supabase not initialized
+### Debug Console Logging
+The app uses several debug prefixes for identifying issues:
+- `[useShipyardSync]` - Realtime shipyard subscription/polling events
+- `[mapStore]` - Region loading and caching
+- `[gameStore]` - Resource/building updates
+- Use browser DevTools → Console tab to filter by prefix
+
+### Testing Realtime Features
+
+**Multi-Session Shipyard Testing**:
+1. Open app in Window A and Window B (same user account)
+2. Navigate both to same settlement's Werft (Shipyard)
+3. Queue a ship in Window A
+4. Observe: Window B updates within 1s without manual refresh
+5. Check console: Both windows should log `[useShipyardSync] received UPDATE` events
+
+**Testing Fallback Polling**:
+1. Open DevTools → Network tab
+2. Enable "Offline" mode to simulate disconnection
+3. Try to queue a ship (will fail realtime subscription)
+4. Disable offline mode
+5. App should auto-sync within 5s via polling (check logs)
+
+**Simulating RLS Failures**:
+1. Create test account with restricted RLS policies
+2. Try to access another player's settlement → should get 403 Forbidden
+3. Check that error is caught gracefully (no console crashes)
+
+### Troubleshooting
+
+#### Supabase not initialized
 - Copy `.env.example` to `.env.local` and add credentials from your Supabase project settings
 - Verify credentials by checking Supabase dashboard → Settings → API
+- Run `npm run seed:supabase` to initialize regions and tiles
 
-### Permission denied errors
+#### Shipyard queue not syncing
+- Verify `shipyard_queue` table exists: Supabase dashboard → Table Editor
+- Check RLS policies on `shipyard_queue` table allow INSERT/UPDATE for authenticated users
+- Ensure migration was applied: `supabase db push`
+- Check browser console for `[useShipyardSync]` errors
+- Verify player owns the settlement (check `settlements.ownerId`)
+
+#### Permission denied (403) errors
 - Check Row-Level Security (RLS) policies in Supabase dashboard → Tables → [table name] → RLS
 - Ensure user is authenticated (`sessionStore.user` should be set)
 - Verify RLS policies allow the operation for the user's role
+- For shipyard: settlement must be owned by current user to write to queues
 
-### Map not rendering regions
+#### Realtime subscription not connecting
+- Check Supabase Realtime is enabled: Dashboard → Project Settings → Realtime
+- Verify JWT token hasn't expired (tokens refresh automatically in auth flow)
+- Check network tab for WebSocket connection to `wss://<project>.supabase.co/realtime/v1`
+- If disabled, app falls back to 5s polling automatically
+
+#### Map not rendering regions
 - Run `npm run seed:supabase` to initialize database with regions and tiles
 - Verify in Supabase dashboard: Table Editor → regions table should show 19 entries
 - Check browser console for 403/404 errors indicating RLS or data issues
 
-### TypeScript errors
+#### TypeScript errors
 - Run `npm run typecheck` to see full error list with line numbers
 - Check that stores properly type their state and actions
 - Ensure imports use the `@` alias correctly
 
-### Tiles not loading correctly
+#### Tiles not loading correctly
 - Verify tile images exist in `public/assets/tiles256/`
 - Check `public/assets/tiles256/biomes.tsx` has correct image references
 - Run `npm run build` to ensure all assets are bundled
@@ -461,6 +545,26 @@ vi.mock('@/services/supabase', () => ({
 2. Create upgrade cost formulas in `src/lib/progression.ts`
 3. Add to `src/data/buildings.ts` reference data
 4. Test via `src/lib/__tests__/progression.test.ts`
+
+### Adding a ship type to the shipyard
+1. Define ship config in `src/data/ships.ts` with id, name, cost, buildTime, requirements
+2. Add to `SHIPS` constant mapping in game data
+3. Add icon to `src/lib/ui/iconMap.ts` for UI rendering
+4. Update `shipyardStore.ts` if new queue logic needed
+5. Test via `WerftView.tsx` with `useShipyardSync` hook
+
+### Subscribing to realtime shipyard updates
+1. Import `useShipyardSync` hook in your component: `import { useShipyardSync } from '@/hooks/useShipyardSync'`
+2. Call at component level: `useShipyardSync(settlementId)`
+3. Store updates automatically when `shipyard_queue` table changes
+4. Access data via `shipyardStore.queues[settlementId]`
+
+### Making a Supabase realtime subscription
+1. Create API wrapper in `src/services/supabase/` module
+2. Define channel: `supabase.channel('realtime:public:table_name:filter')`
+3. Subscribe to postgres_changes events
+4. Implement cleanup: `channel.unsubscribe()` on component unmount
+5. Add fallback polling if subscription fails (check `useShipyardSync` for pattern)
 
 ### Making a Supabase query
 1. Create API wrapper in appropriate module under `src/services/supabase/`
@@ -501,10 +605,23 @@ The project uses a custom UI library built on Radix UI primitives:
 - `CollapsibleCard.tsx` - Expandable/collapsible card for nested content
 - `RequirementBadge.tsx` - Visual badge showing requirement status (locked/unlocked)
 - `ProgressBar.tsx` - Progress indicator for builds/research
+- `ResourceStrip.tsx` - Resource display bar (extracted for reuse across views)
 - `ToastViewport.tsx` - Toast notification system
 - `BottomSheet.tsx` - Mobile bottom sheet for modals
 - `LoadingOverlay.tsx` - Full-screen loading indicator
 - `StickyTopbarShadow.tsx` - Shadow effect for sticky headers
+
+**Layout Components** ([src/components/views/common/](src/components/views/common/)):
+- `ProductionBoard.tsx` - Shared layout for BuildingsView, ResearchView, WerftView (resources, map, sidebar)
+
+**UI Utility Functions** ([src/lib/ui/](src/lib/ui/)):
+- `formatting.ts` - Number formatting (thousands, durations), progress percentages
+  - `formatNumber()` - Display 1000000 as "1.0M"
+  - `formatDuration()` - Convert ms to "2d 3h 45m"
+  - `getProgressPercent()` - Calculate build completion percentage
+- `iconMap.ts` - Icon exports for ships, buildings, missions
+  - Maps game IDs to Lucide React icons
+  - Used by card components and UI lists
 
 **Design Principles**:
 - Steampunk aesthetic with brass/copper color palette
@@ -516,7 +633,16 @@ The project uses a custom UI library built on Radix UI primitives:
 
 See [README.md](README.md) for current implementation status and open tasks.
 
-**Recent Updates**:
+**Recent Updates (Phase 2 - Multiplayer & Realtime)**:
+- ✅ Shipyard queue with Supabase realtime sync (`shipyard_queue` table)
+- ✅ `useShipyardSync` hook for automatic multi-session updates
+- ✅ Extracted `ResourceStrip` component for consistent resource display across views
+- ✅ Refactored `ProductionBoard` layout (shared by BuildingsView, ResearchView, WerftView)
+- ✅ Added utility functions: `formatting.ts` (number/duration formatting), `iconMap.ts` (UI icons)
+- ✅ Enhanced `shipyardStore` with queue management and cost calculations
+- ✅ Settlement data sync via realtime subscriptions with fallback polling
+
+**Phase 1 Completed**:
 - ✅ WerftView activated with full store integration
 - ✅ Redesigned UI to card-based format with Steampunk flavor
 - ✅ Integrated requirements system with UI components
@@ -530,3 +656,11 @@ See [README.md](README.md) for current implementation status and open tasks.
 - Implement advanced pathfinding for multi-leg convoy missions
 - Add combat resolution UI and battle reports
 - Implement alliance diplomacy features (pacts, wars)
+- Scale realtime architecture to multiple tables (convoys, settlements, buildings)
+- Add conflict resolution for concurrent edits (e.g., two clients queuing ships simultaneously)
+
+**Testing Realtime Features**:
+- Open same settlement in 2+ browser windows
+- Queue a ship in one window → should appear in other windows within 1s
+- Check browser console for `[useShipyardSync]` debug logs
+- Verify fallback polling kicks in if realtime subscription disconnects

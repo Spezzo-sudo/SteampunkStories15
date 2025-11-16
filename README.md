@@ -91,6 +91,11 @@ Ohne Firebase-Konfiguration läuft der Client im Offline-Demomodus, unterstützt
 
 ## Projektstatus
 
+### Produktions-UI Update (2025-11-16)
+- Ressourcenleiste wurde als `ResourceStrip` ausgelagert und ist jetzt in Gebäude-, Forschungs- und Werftansicht identisch.
+- `ProductionBoard` definiert das gemeinsame Raster aus Ressourcenleiste, Kartenbereich und Status-Sidebar, damit Aufbau/Forschung/Werft gleich bedient werden.
+- Die Werft ist mit Supabase synchronisiert (`shipyard_queue` inkl. Realtime), sodass Bauaufträge nicht mehr nur lokal im Browser hängenbleiben.
+
 ## Firebase Backend
 
 ### Authentifizierung & Standardzugang

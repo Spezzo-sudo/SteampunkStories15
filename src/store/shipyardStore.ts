@@ -12,6 +12,12 @@ import { Resources, ResourceType, ShipBlueprint, ShipBuildOrder } from '@/types'
 import { canBuildShip, formatRequirementError } from '@/lib/requirements';
 import { useGameStore } from '@/store/gameStore';
 import { ToastVariant, useUiStore } from '@/store/uiStore';
+import {
+  createShipyardOrder,
+  fetchShipyardQueue,
+  ShipyardQueueRow,
+  updateShipyardOrderStatus,
+} from '@/services/supabase/shipyardApi';
 
 interface ShipyardState {
   queue: ShipBuildOrder[];
@@ -23,6 +29,9 @@ interface ShipyardActions {
   startOrder: (blueprintId: string, quantity?: number) => void;
   cancelOrder: (orderId: string) => void;
   advance: (timestamp: number) => void;
+  upsertRemoteOrder: (row: ShipyardQueueRow) => void;
+  removeRemoteOrder: (orderId: string) => void;
+  loadRemoteQueue: (playerId: string) => Promise<void>;
 }
 
 const findBlueprint = (blueprintId: string): ShipBlueprint | undefined =>
@@ -36,19 +45,6 @@ const scaleCost = (base: Resources, quantity: number): Resources => ({
 
 /**
  * Calculates total build duration for a ship order with werft bonuses applied.
- *
- * @param blueprint - Ship blueprint with buildTimeSeconds
- * @param quantity - Number of ships to build (builds sequentially)
- * @param werftLevel - Current werft building level (0 = no bonus)
- * @returns Total duration in milliseconds
- *
- * LOGIC:
- * - Base duration = blueprint.buildTimeSeconds (in seconds) × 1000 (convert to ms) × quantity (sequential builds)
- * - Werft bonus = -5% per werft level applied to TOTAL duration
- * - Example: 2 ships at 3600s each = 7200s base
- *   - Werft level 1: 7200s × (1 - 0.05) = 6840s
- *   - Werft level 5: 7200s × (1 - 0.25) = 5400s
- * - Bonus applies to entire queue, not per-ship, encouraging high werft levels
  */
 const calculateDuration = (blueprint: ShipBlueprint, quantity: number, werftLevel: number = 0) => {
   const baseDuration = blueprint.buildTimeSeconds * 1000 * quantity;
@@ -58,15 +54,6 @@ const calculateDuration = (blueprint: ShipBlueprint, quantity: number, werftLeve
 
 /**
  * Calculates cost multiplier based on werft level.
- *
- * @param werftLevel - Current werft building level (0 = no bonus)
- * @returns Multiplier to apply to ship costs (e.g., 0.9 = 10% discount)
- *
- * LOGIC:
- * - Base multiplier = 1.0 (no discount)
- * - Werft bonus = -2% per werft level
- * - Example costs at werft level 3: cost × (1 - 0.06) = cost × 0.94 (6% discount)
- * - Helps offset higher werft construction costs and encourages investment
  */
 const getWerftCostMultiplier = (werftLevel: number): number => {
   return 1 - werftLevel * 0.02;
@@ -116,6 +103,20 @@ const rebuildQueuedSchedule = (orders: ShipBuildOrder[]) => {
   });
 };
 
+const mapRowToOrder = (row: ShipyardQueueRow): ShipBuildOrder => ({
+  id: row.id,
+  blueprintId: row.ship_type,
+  quantity: row.ship_quantity ?? 1,
+  costPaid: {
+    [ResourceType.Orichalkum]: row.cost_orichalkum,
+    [ResourceType.Fokuskristalle]: row.cost_fokuskristalle,
+    [ResourceType.Vitriol]: row.cost_vitriol,
+  },
+  startTime: new Date(row.started_at).getTime(),
+  endTime: new Date(row.started_at).getTime() + row.duration_seconds * 1000,
+  status: row.status,
+});
+
 const initialInventory = { ...INITIAL_FLEET_COMPOSITION };
 
 /**
@@ -138,7 +139,6 @@ export const useShipyardStore = create<ShipyardState & ShipyardActions>()(
         const werftLevel = gameState.buildings['werft'] || 0;
         const research = gameState.research;
 
-        // NEW: Validate ship requirements
         const validation = canBuildShip(blueprintId, werftLevel, research);
         if (!validation.canDo) {
           const errorMsg = formatRequirementError(validation.missing);
@@ -170,7 +170,6 @@ export const useShipyardStore = create<ShipyardState & ShipyardActions>()(
           return;
         }
 
-        // NEW: Apply werft cost bonus
         const baseCost = scaleCost(blueprint.baseCost, quantity);
         const costMultiplier = getWerftCostMultiplier(werftLevel);
         const cost: Resources = {
@@ -194,14 +193,17 @@ export const useShipyardStore = create<ShipyardState & ShipyardActions>()(
           .sort((a, b) => a.endTime - b.endTime);
         const lastEnd = activeOrders.length > 0 ? activeOrders[activeOrders.length - 1].endTime : now;
         const startTime = Math.max(now, lastEnd);
-        // NEW: Apply werft time bonus
         const duration = calculateDuration(blueprint, quantity, werftLevel);
         const endTime = startTime + duration;
+        const orderId =
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : `ship-${blueprintId}-${Date.now()}`;
         const order: ShipBuildOrder = {
-          id: `ship-${blueprintId}-${Date.now()}`,
+          id: orderId,
           blueprintId,
           quantity,
-          costPaid: cost, // FIXED: Store the actual cost paid (with werft bonus)
+          costPaid: cost,
           startTime,
           endTime,
           status: 'queued',
@@ -214,6 +216,26 @@ export const useShipyardStore = create<ShipyardState & ShipyardActions>()(
           description: `${quantity}x ${blueprint.name} eingeplant.`,
           variant: ToastVariant.Success,
         });
+
+        const playerId = gameState.playerId;
+        if (playerId) {
+          createShipyardOrder({
+            id: orderId,
+            playerId,
+            blueprintId,
+            quantity,
+            cost,
+            startTime,
+            durationSeconds: Math.max(1, duration / 1000),
+          }).catch((error) => {
+            console.error('[shipyardStore] Failed to persist shipyard order', error);
+            pushToast({
+              title: 'Werft Sync fehlgeschlagen',
+              description: 'Auftrag wurde lokal angelegt, aber konnte nicht mit Supabase synchronisiert werden.',
+              variant: ToastVariant.Warning,
+            });
+          });
+        }
       },
 
       cancelOrder: (orderId) => {
@@ -230,7 +252,6 @@ export const useShipyardStore = create<ShipyardState & ShipyardActions>()(
           if (!blueprint) {
             return;
           }
-          // FIXED: Use the actual cost paid (with werft bonus) instead of base cost
           refund = order.costPaid;
           blueprintName = blueprint.name;
           state.queue = state.queue.filter((entry) => entry.id !== orderId);
@@ -244,11 +265,14 @@ export const useShipyardStore = create<ShipyardState & ShipyardActions>()(
             variant: ToastVariant.Warning,
           });
         }
+        updateShipyardOrderStatus(orderId, 'cancelled').catch((error) =>
+          console.error('[shipyardStore] Failed to mark order cancelled', error)
+        );
       },
 
       advance: (timestamp) => {
         const { pushToast } = useUiStore.getState();
-        const completions: { blueprintId: string; quantity: number }[] = [];
+        const completions: { blueprintId: string; quantity: number; id: string }[] = [];
         set((state) => {
           state.queue.forEach((order) => {
             if (order.status === 'queued' && timestamp >= order.startTime) {
@@ -257,7 +281,11 @@ export const useShipyardStore = create<ShipyardState & ShipyardActions>()(
             if (order.status === 'building' && timestamp >= order.endTime) {
               order.status = 'completed';
               state.inventory[order.blueprintId] = (state.inventory[order.blueprintId] ?? 0) + order.quantity;
-              completions.push({ blueprintId: order.blueprintId, quantity: order.quantity });
+              completions.push({
+                blueprintId: order.blueprintId,
+                quantity: order.quantity,
+                id: order.id,
+              });
             }
           });
           rebuildQueuedSchedule(state.queue);
@@ -272,6 +300,35 @@ export const useShipyardStore = create<ShipyardState & ShipyardActions>()(
             description: `${completion.quantity} Schiff${completion.quantity > 1 ? 'e' : ''} bereit im Hangar.`,
             variant: ToastVariant.Info,
           });
+          updateShipyardOrderStatus(completion.id, 'completed').catch((error) =>
+            console.error('[shipyardStore] Failed to mark order completed', error)
+          );
+        });
+      },
+
+      upsertRemoteOrder: (row) => {
+        const order = mapRowToOrder(row);
+        set((state) => {
+          const existingIndex = state.queue.findIndex((entry) => entry.id === order.id);
+          if (existingIndex >= 0) {
+            state.queue[existingIndex] = { ...state.queue[existingIndex], ...order };
+          } else {
+            state.queue.push(order);
+          }
+          rebuildQueuedSchedule(state.queue);
+        });
+      },
+
+      removeRemoteOrder: (orderId) => {
+        set((state) => {
+          state.queue = state.queue.filter((entry) => entry.id !== orderId);
+        });
+      },
+
+      loadRemoteQueue: async (playerId: string) => {
+        const rows = await fetchShipyardQueue(playerId);
+        set((state) => {
+          state.queue = rows.map(mapRowToOrder);
         });
       },
     })),
