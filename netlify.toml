@@ -1,0 +1,52 @@
+# Netlify Configuration für Äther-Imperium
+# Dokumentation: https://docs.netlify.com/configure-builds/file-based-configuration/
+
+[build]
+  # Build-Befehl (erstellt Production-Build)
+  command = "npm run build"
+
+  # Verzeichnis mit den fertigen Dateien
+  publish = "dist"
+
+  # Node.js Version (wichtig für kompatibles Build)
+  [build.environment]
+    NODE_VERSION = "18"
+
+# SPA-Routing: Alle URLs auf index.html umleiten
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Security Headers für zusätzliche Sicherheit
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Cache-Einstellungen für bessere Performance
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Optimierungen
+[build.processing]
+  skip_processing = false
+
+[build.processing.css]
+  bundle = true
+  minify = true
+
+[build.processing.js]
+  bundle = true
+  minify = true
+
+[build.processing.html]
+  pretty_urls = true
+
+[build.processing.images]
+  compress = true
