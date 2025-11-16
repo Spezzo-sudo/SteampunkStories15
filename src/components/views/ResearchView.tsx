@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { useGameStore } from '@/store/gameStore';
-import { RESEARCH, BUILDINGS } from '@/constants';
+import { RESEARCH, BUILDINGS, MAX_BUILD_QUEUE_LENGTH } from '@/constants';
 import GameObjectCard from '@/components/ui/GameObjectCard';
 import { canResearch } from '@/lib/requirements';
 
@@ -209,7 +209,7 @@ const ResearchView: React.FC = () => {
               isUpgrading={isUpgrading}
               queueLength={buildQueue.length}
               requirements={requirementsText.length > 0 ? requirementsText : undefined}
-              disabled={!validation.canDo || buildQueue.length >= 10}
+              disabled={!validation.canDo || buildQueue.length >= MAX_BUILD_QUEUE_LENGTH}
             />
           );
         })}

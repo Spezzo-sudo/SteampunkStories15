@@ -103,7 +103,6 @@ export const useMapStore = create(
     loadWorld: async () => {
       const { worldId, loadingWorld } = get();
       if (loadingWorld) {
-        console.log('[mapStore] loadWorld already in progress, skipping');
         return;
       }
       if (!worldId) {
@@ -111,13 +110,9 @@ export const useMapStore = create(
         set({ worldError: 'Keine Welt-ID verfügbar.' });
         return;
       }
-      console.log('[mapStore] loadWorld: Starting to fetch regions for worldId:', worldId);
       set({ loadingWorld: true, worldError: null });
       try {
-        const startTime = performance.now();
         const regions = await listRegions(worldId);
-        const endTime = performance.now();
-        console.log(`[mapStore] loadWorld: Fetched ${regions.length} regions in ${(endTime - startTime).toFixed(2)}ms`);
         set((state) => {
           const allianceFilterOn = state.world?.allianceFilterOn ?? false;
           const selectedRegionId = state.world?.selectedRegionId ?? null;
@@ -130,7 +125,6 @@ export const useMapStore = create(
             home: state.home,
           };
           state.loadingWorld = false;
-          console.log('[mapStore] loadWorld: World state updated, loadingWorld set to false');
         });
       } catch (error) {
         console.error('[mapStore] Failed to load world:', error);
@@ -362,7 +356,6 @@ export const useMapStore = create(
     },
 
     invalidateRegionCache: (regionId) => {
-      console.log('[mapStore] Invalidating cache for region:', regionId);
       regionCache.delete(regionId);
       pendingRegionLoads.delete(regionId);
     },

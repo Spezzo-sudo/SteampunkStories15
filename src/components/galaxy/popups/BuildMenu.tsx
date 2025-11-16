@@ -19,7 +19,6 @@ export const BuildMenu: React.FC<BuildMenuProps> = ({ onClose }) => {
   }
 
   const handleBuildUnit = (unit: UnitSpec) => {
-    console.log(`BUILD COMMAND: Unit ${unit.id} on tile ${buildMenuTile.q},${buildMenuTile.r}`);
     // This will later be replaced with a call to a service that
     // queues the build order on the backend.
     onClose();

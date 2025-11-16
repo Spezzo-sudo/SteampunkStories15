@@ -149,7 +149,7 @@ const BuildingsView: React.FC = () => {
               isUpgrading={isUpgrading}
               queueLength={buildQueue.length}
               requirements={requirementsText.length > 0 ? requirementsText : undefined}
-              disabled={!validation.canDo || buildQueue.length >= 10}
+              disabled={!validation.canDo || buildQueue.length >= MAX_BUILD_QUEUE_LENGTH}
             />
           );
         })}

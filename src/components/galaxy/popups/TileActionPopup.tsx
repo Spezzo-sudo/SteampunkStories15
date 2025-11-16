@@ -117,17 +117,14 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
     setIsCreatingSettlement(true);
     setSettlementError(null);
     try {
-      console.log('[TileActionPopup] Creating settlement with playerId:', profile.playerId, 'tileId:', tileId);
       const newSettlement = await createSettlement(profile.playerId, tileId, settlementName.trim());
       if (newSettlement) {
-        console.log(`Settlement created: ${newSettlement.name} (${newSettlement.id})`);
         // Close modal and refresh settlements
         setShowSettlementModal(false);
         setSettlementError(null);
 
         // Mark home planet as placed (first settlement)
         if (!profile.hasPlacedHome) {
-          console.log('[TileActionPopup] Marking home planet as placed');
           try {
             await updatePlayerProfile(profile.uid, { hasPlacedHome: true });
           } catch (updateError) {
@@ -143,7 +140,6 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
 
         // Invalidate and reload region cache to show settlement on map
         const { invalidateRegionCache, worldId } = useMapStore.getState();
-        console.log('[TileActionPopup] Invalidating region cache for region:', tile.regionId);
         invalidateRegionCache(tile.regionId);
 
         // Reload the region with updated tile data
@@ -153,7 +149,6 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
             if (updatedRegion) {
               const { setRegion } = useMapStore.getState();
               setRegion(updatedRegion);
-              console.log('[TileActionPopup] Region reloaded with settlement data');
             }
           }
         } catch (regionError) {
@@ -203,7 +198,6 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
     if (convoyId) {
       // Calculate travel time for display
       const travelTime = calculateScoutTravelTime(5, selectedShips); // 5 hex estimate
-      console.log(`Scout mission planned: ${convoyId} (ETA: ${travelTime.toFixed(1)}s)`);
 
       // Close modal and show confirmation
       setShowScoutModal(false);
@@ -238,8 +232,6 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
     const convoyId = planStationingMission(selectedSettlementForStationing, selectedStationingShips, tile.id);
 
     if (convoyId) {
-      console.log(`Stationing mission planned: ${convoyId}`);
-
       // Close modal and show confirmation
       setShowStationingModal(false);
       setSelectedStationingShips([]);
@@ -273,8 +265,6 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
     const convoyId = planAttackMission(selectedSettlementForAttack, selectedAttackShips, tile.id);
 
     if (convoyId) {
-      console.log(`Attack mission planned: ${convoyId}`);
-
       // Close modal and show confirmation
       setShowAttackModal(false);
       setSelectedAttackShips([]);
@@ -288,7 +278,6 @@ export const TileActionPopup: React.FC<TileActionPopupProps> = ({ tile, onClose 
 
   const handleTransportClick = () => {
     // TODO: Phase C - Transport missions not yet implemented
-    console.log('Transport feature coming soon in Phase C');
   };
 
   return (
