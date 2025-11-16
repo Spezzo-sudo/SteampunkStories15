@@ -1,8 +1,10 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { RESEARCH, BUILDINGS, MAX_BUILD_QUEUE_LENGTH } from '@/constants';
 import GameObjectCard from '@/components/ui/GameObjectCard';
 import { canResearch } from '@/lib/requirements';
+import ProductionBoard from '@/components/views/common/ProductionBoard';
+import { getResearchIcon } from '@/lib/ui/iconMap';
 
 const RESEARCH_CATEGORIES = {
   antrieb: [
@@ -37,6 +39,10 @@ const CATEGORY_LABELS: Record<keyof typeof RESEARCH_CATEGORIES, string> = {
   utility: 'Utility',
 };
 
+const ALL_CATEGORY_KEY = 'alle';
+
+type CategoryKey = keyof typeof RESEARCH_CATEGORIES | typeof ALL_CATEGORY_KEY;
+
 /**
  * Generates requirement text for CollapsibleCard requirements prop.
  * Combines tech-tree requirements into human-readable strings with status indicators.
@@ -59,47 +65,19 @@ const buildResearchRequirementsText = (
       const currentLevel = currentResearch[req.id] || 0;
       const met = currentLevel >= requiredLevel;
 
-      reqs.push(`${met ? '✓' : '✗'} ${researchName} Stufe ${requiredLevel}`);
+      reqs.push(`${met ? '✓' : '•'} ${researchName} Stufe ${requiredLevel}`);
     } else {
       const buildingName = BUILDINGS[req.id as keyof typeof BUILDINGS]?.name || req.id;
       const requiredLevel = req.level || 1;
       const currentLevel = currentBuildings[req.id] || 0;
       const met = currentLevel >= requiredLevel;
 
-      reqs.push(`${met ? '✓' : '✗'} ${buildingName} Level ${requiredLevel}`);
+      reqs.push(`${met ? '✓' : '•'} ${buildingName} Level ${requiredLevel}`);
     }
   });
 
   return reqs;
 };
-
-/**
- * Icon mapping für Forschung.
- */
-const getResearchIcon = (researchId: string): string => {
-  const iconMap: Record<string, string> = {
-    aetherdynamik: '⚡',
-    kolbenAntrieb: '🔧',
-    dampfjet: '💨',
-    aethermotor: '⚙️',
-    kesseldruckOptimierung: '📈',
-    differenzmaschinenKalkuel: '🧮',
-    observatoriumsnetz: '🔭',
-    panzerungstechnik: '🛡️',
-    teslaSpulenForschung: '⚡',
-    lichtbogenIngenieurwesen: '💡',
-    pulverProjektilkunde: '🎯',
-    magnetfeldBarrieren: '🧲',
-    aetherplasmaEntladungen: '🌟',
-    spionagetechnologie: '🕵️',
-    rumpfverstaerkungsLegierungen: '🔨',
-  };
-  return iconMap[researchId] || '🔬';
-};
-
-const ALL_CATEGORY_KEY = 'alle';
-
-type CategoryKey = keyof typeof RESEARCH_CATEGORIES | typeof ALL_CATEGORY_KEY;
 
 /**
  * Übersicht über alle Forschungsprojekte mit Filtertabs für die Informationsarchitektur.
@@ -122,7 +100,7 @@ const ResearchView: React.FC = () => {
     (tech: typeof RESEARCH[keyof typeof RESEARCH]) => {
       startUpgrade(tech);
     },
-    [startUpgrade],
+    [startUpgrade]
   );
 
   const categoryEntries = Object.entries(CATEGORY_LABELS) as ([
@@ -130,49 +108,100 @@ const ResearchView: React.FC = () => {
     string,
   ])[];
 
-  const filteredResearch = Object.values(RESEARCH).filter((tech) => {
-    if (activeCategory === ALL_CATEGORY_KEY) {
-      return true;
-    }
-    return RESEARCH_CATEGORIES[activeCategory]?.includes(tech.id);
-  });
+  const filteredResearch = useMemo(
+    () =>
+      Object.values(RESEARCH).filter((tech) => {
+        if (activeCategory === ALL_CATEGORY_KEY) {
+          return true;
+        }
+        return RESEARCH_CATEGORIES[activeCategory]?.includes(tech.id);
+      }),
+    [activeCategory]
+  );
+
+  const tabs = (
+    <div className="flex flex-wrap gap-2 pt-1">
+      <button
+        type="button"
+        onClick={() => handleCategoryChange(ALL_CATEGORY_KEY)}
+        className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-colors ${
+          activeCategory === ALL_CATEGORY_KEY
+            ? 'bg-yellow-600/80 text-black'
+            : 'bg-black/40 text-gray-200 hover:bg-yellow-800/40'
+        }`}
+      >
+        Alle
+      </button>
+      {categoryEntries.map(([key, label]) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => handleCategoryChange(key)}
+          className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-colors ${
+            activeCategory === key
+              ? 'bg-yellow-600/80 text-black'
+              : 'bg-black/40 text-gray-200 hover:bg-yellow-800/40'
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
+  const researchQueuePanel = useMemo(() => {
+    const researchQueue = buildQueue.filter((item) => RESEARCH[item.entityId as keyof typeof RESEARCH]);
+    return (
+      <div className="rounded-2xl border border-yellow-800/30 bg-black/50 p-6 shadow-xl">
+        <h3 className="text-[clamp(1.1rem,1vw+0.9rem,1.5rem)] font-cinzel text-yellow-200">Forschungsstatus</h3>
+        <p className="mt-2 text-sm text-gray-300">
+          {researchQueue.length} / {MAX_BUILD_QUEUE_LENGTH} Slots belegt
+        </p>
+        <ul className="mt-4 space-y-2 text-sm text-gray-200">
+          {researchQueue.length === 0 && <li>Keine aktiven Studien</li>}
+          {researchQueue.slice(0, 3).map((entry) => {
+            const tech = RESEARCH[entry.entityId as keyof typeof RESEARCH];
+            return (
+              <li
+                key={`${entry.entityId}-${entry.level}`}
+                className="flex items-center justify-between rounded-lg bg-black/40 px-3 py-2"
+              >
+                <span>{tech?.name ?? entry.entityId} → L{entry.level}</span>
+                <span className="text-xs text-yellow-300">
+                  {Math.ceil(Math.max(0, entry.endTime - Date.now()) / 60000)}m
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    );
+  }, [buildQueue]);
+
+  const helperPanel = (
+    <div className="rounded-2xl border border-yellow-800/30 bg-black/45 p-6 shadow-xl">
+      <h3 className="text-[clamp(1.1rem,1vw+0.9rem,1.5rem)] font-cinzel text-yellow-200">Leitfaden</h3>
+      <ul className="mt-3 space-y-2 text-sm text-gray-300">
+        <li>✓ Forschungs-, Gebäude- und Werftkarten nutzen identische Controls</li>
+        <li>✓ Anforderungen kombinieren Forschung + Gebäude klar</li>
+        <li>✓ Queue-Status zeigt denselben Fortschrittsaufbau wie andere Bereiche</li>
+      </ul>
+    </div>
+  );
 
   return (
-    <section className="space-y-8 pb-16">
-      <header className="space-y-3">
-        <h2 className="text-[clamp(1.8rem,1.2vw+1.5rem,2.4rem)] font-cinzel text-yellow-300">Forschungslabor</h2>
-        <p className="text-sm text-gray-300">
-          Filtere deine Projekte nach Themenbereichen und plane Upgrades mit klaren Anforderungen.
-        </p>
-        <div className="flex flex-wrap gap-2 pt-1">
-          <button
-            type="button"
-            onClick={() => handleCategoryChange(ALL_CATEGORY_KEY)}
-            className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-colors ${
-              activeCategory === ALL_CATEGORY_KEY
-                ? 'bg-yellow-600/80 text-black'
-                : 'bg-black/40 text-gray-200 hover:bg-yellow-800/40'
-            }`}
-          >
-            Alle
-          </button>
-          {categoryEntries.map(([key, label]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => handleCategoryChange(key)}
-              className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-colors ${
-                activeCategory === key
-                  ? 'bg-yellow-600/80 text-black'
-                  : 'bg-black/40 text-gray-200 hover:bg-yellow-800/40'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </header>
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-3">
+    <ProductionBoard
+      title="Forschungslabor"
+      description="Filtere deine Projekte nach Themenbereichen und plane Upgrades mit klaren Anforderungen."
+      actions={tabs}
+      sidebar={
+        <>
+          {researchQueuePanel}
+          {helperPanel}
+        </>
+      }
+    >
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5">
         {filteredResearch.map((tech) => {
           const currentLevel = research[tech.id] || 0;
           const targetLevel = buildQueue
@@ -185,7 +214,6 @@ const ResearchView: React.FC = () => {
           const isUpgrading = buildQueue.some((item) => item.entityId === tech.id);
           const affordable = canAfford(costForNextUpgrade);
 
-          // Validate requirements for tech
           const validation = canResearch(tech.id, research, buildings);
           const requirementsText = buildResearchRequirementsText(tech, research, buildings);
 
@@ -214,7 +242,7 @@ const ResearchView: React.FC = () => {
           );
         })}
       </div>
-    </section>
+    </ProductionBoard>
   );
 };
 

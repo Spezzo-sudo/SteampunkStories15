@@ -4,17 +4,19 @@ import { ResourceType } from '@/types';
 import GameObjectCard from '@/components/ui/GameObjectCard';
 import { useShipyardStore } from '@/store/shipyardStore';
 import { useGameStore } from '@/store/gameStore';
-
-const formatCost = (value: number) => value.toLocaleString('de-DE');
+import ProductionBoard from '@/components/views/common/ProductionBoard';
+import { getShipRoleIcon } from '@/lib/ui/iconMap';
+import { formatResourceAmount } from '@/lib/ui/formatting';
+import { useShipyardSync } from '@/hooks/useShipyardSync';
 
 /**
- * Werft mit modernem CollapsibleCard-Design für Schiffe-Übersicht.
+ * Werft mit modernem CollapsibleCard-Design für Schiffsübersicht.
  * Zeigt Blueprints kompakt, expanded view mit vollständigen Details.
  */
 const WerftView: React.FC = () => {
-  const [shipQuantities, setShipQuantities] = useState<Record<string, number>>({});
+  useShipyardSync();
 
-  // Store selectors
+  const [shipQuantities, setShipQuantities] = useState<Record<string, number>>({});
   const queue = useShipyardStore((state) => state.queue);
   const hangarCapacity = useShipyardStore((state) => state.hangarCapacity);
   const inventory = useShipyardStore((state) => state.inventory);
@@ -33,12 +35,10 @@ const WerftView: React.FC = () => {
     startOrder(shipId, quantity);
   };
 
-  // Calculate hangar slots used
   const calculateSlotUsage = useMemo(() => {
     let occupied = 0;
     let reserved = 0;
 
-    // Occupied by built ships
     Object.entries(inventory).forEach(([blueprintId, qty]) => {
       const ship = SHIP_BLUEPRINTS.find((s) => s.id === blueprintId);
       if (ship) {
@@ -46,7 +46,6 @@ const WerftView: React.FC = () => {
       }
     });
 
-    // Reserved by queued/building orders
     queue
       .filter((order) => order.status !== 'completed' && order.status !== 'cancelled')
       .forEach((order) => {
@@ -73,34 +72,86 @@ const WerftView: React.FC = () => {
     return canAfford(cost);
   };
 
-  const getShipIcon = (role: string): string => {
-    const iconMap: Record<string, string> = {
-      'Aufklärung': '🔭',
-      'Transport': '📦',
-      'Angriff': '⚔️',
-      'Unterstützung': '🏥',
-      'Kolonisation': '🏗️',
-    };
-    return iconMap[role] || '⚓';
-  };
+  const statusPanel = (
+    <div className="rounded-2xl border border-yellow-800/30 bg-black/50 p-6 shadow-xl">
+      <h3 className="text-[clamp(1.2rem,1vw+1rem,1.6rem)] font-cinzel text-yellow-200">Werftstatus</h3>
+      <dl className="mt-3 space-y-3 text-sm text-gray-200">
+        <div className="rounded-lg bg-black/40 p-3">
+          <dt className="text-xs uppercase tracking-wide text-yellow-300">Verfügbare Slots</dt>
+          <dd className="font-semibold">
+            {calculateSlotUsage.available} von {hangarCapacity} Slots frei
+            {calculateSlotUsage.reserved > 0 && (
+              <div className="mt-1 text-xs text-slate-400">
+                {calculateSlotUsage.occupied} belegt, {calculateSlotUsage.reserved} reserviert
+              </div>
+            )}
+          </dd>
+        </div>
+        <div className="rounded-lg bg-black/40 p-3">
+          <dt className="text-xs uppercase tracking-wide text-yellow-300">Aktive Bauaufträge</dt>
+          <dd className="font-semibold">
+            {activeOrders.length === 0 ? (
+              'Keine aktiven Aufträge'
+            ) : (
+              <>
+                {activeOrders.length} von {MAX_SHIPYARD_QUEUE}
+                <div className="mt-2 space-y-1">
+                  {activeOrders.slice(0, 3).map((order) => {
+                    const ship = SHIP_BLUEPRINTS.find((s) => s.id === order.blueprintId);
+                    const progress = Math.round(
+                      ((Date.now() - order.startTime) / (order.endTime - order.startTime)) * 100
+                    );
+                    return (
+                      <div key={order.id} className="text-xs text-slate-300">
+                        {ship?.name} ×{order.quantity} ({Math.max(0, progress)}%)
+                      </div>
+                    );
+                  })}
+                  {activeOrders.length > 3 && (
+                    <div className="text-xs text-slate-400">+{activeOrders.length - 3} weitere...</div>
+                  )}
+                </div>
+              </>
+            )}
+          </dd>
+        </div>
+        <div className="rounded-lg bg-black/40 p-3">
+          <dt className="text-xs uppercase tracking-wide text-yellow-300">Ressourcen verfügbar</dt>
+          <dd className="space-y-1 font-semibold">
+            <div className="text-yellow-200">OR {formatResourceAmount(resources[ResourceType.Orichalkum])}</div>
+            <div className="text-blue-200">KR {formatResourceAmount(resources[ResourceType.Fokuskristalle])}</div>
+            <div className="text-red-200">VT {formatResourceAmount(resources[ResourceType.Vitriol])}</div>
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+
+  const checklistPanel = (
+    <div className="rounded-2xl border border-yellow-800/30 bg-black/45 p-6 shadow-xl">
+      <h3 className="text-[clamp(1.1rem,1vw+0.9rem,1.5rem)] font-cinzel text-yellow-200">Checkliste</h3>
+      <ul className="mt-3 space-y-2 text-sm text-gray-300">
+        <li>✓ Ressourcenpuffer prüfen</li>
+        <li>✓ Hangar-Slots reservieren</li>
+        <li>⚙ Crewzuteilung automatisieren</li>
+        <li>⚙ Missionsplanung ans Backend anbinden</li>
+      </ul>
+    </div>
+  );
 
   return (
-    <section className="space-y-8 pb-20">
-      <header className="space-y-2">
-        <h2 className="text-[clamp(1.8rem,1.2vw+1.5rem,2.4rem)] font-cinzel text-yellow-300">Werft</h2>
-        <p className="text-sm text-gray-300">
-          Plane deine Flotte mit modernen Schiffsdesigns. Wähle ein Schiff und lege die Menge fest, um mit dem Bau zu beginnen.
-        </p>
-      </header>
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        {/* Schiffe Grid */}
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <h3 className="text-[clamp(1.2rem,1vw+1rem,1.6rem)] font-cinzel text-yellow-200">Verfügbare Blueprints</h3>
-            <p className="text-xs text-gray-400">Wähle ein Schiff, lege die Menge fest und starte den Bau. Deine Ressourcen und Hangarkapazität beeinflussen die Verfügbarkeit.</p>
-          </div>
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+    <ProductionBoard
+      title="Werft"
+      description="Plane deine Flotte mit modernen Schiffsdesigns. Wähle ein Schiff, lege die Menge fest und starte den Bau."
+      sidebar={
+        <>
+          {statusPanel}
+          {checklistPanel}
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-5">
           {SHIP_BLUEPRINTS.map((ship) => {
             const quantity = shipQuantities[ship.id] || 1;
             const affordable = getShipAffordability(ship, quantity);
@@ -112,7 +163,7 @@ const WerftView: React.FC = () => {
               <GameObjectCard
                 key={ship.id}
                 id={ship.id}
-                icon={getShipIcon(ship.role)}
+                icon={getShipRoleIcon(ship.role)}
                 title={ship.name}
                 level={1}
                 targetLevel={1}
@@ -120,8 +171,8 @@ const WerftView: React.FC = () => {
                 fullDescription={`${ship.description}\n\n${ship.flavorText || ''}`}
                 stats={{
                   'Hangar-Slots': ship.hangarSlots,
-                  'Crew': ship.crew,
-                  'Laderaum': `${formatCost(ship.cargo)} Einheiten`,
+                  Crew: ship.crew,
+                  Laderaum: `${formatResourceAmount(ship.cargo)} Einheiten`,
                 }}
                 cost={ship.baseCost}
                 buildTime={ship.buildTimeSeconds}
@@ -135,78 +186,10 @@ const WerftView: React.FC = () => {
                 disabled={isDisabled}
               />
             );
-        })}
-          </div>
-        </div>
-
-        {/* Status Panel */}
-        <div className="flex flex-col gap-4">
-          <div className="rounded-2xl border border-yellow-800/30 bg-black/50 p-6 shadow-xl">
-            <h3 className="text-[clamp(1.2rem,1vw+1rem,1.6rem)] font-cinzel text-yellow-200">Werftstatus</h3>
-            <dl className="mt-3 space-y-3 text-sm text-gray-200">
-              <div className="rounded-lg bg-black/40 p-3">
-                <dt className="text-xs uppercase tracking-wide text-yellow-300">Verfügbare Slots</dt>
-                <dd className="font-semibold">
-                  {calculateSlotUsage.available} von {hangarCapacity} Slots frei
-                  {calculateSlotUsage.reserved > 0 && (
-                    <div className="mt-1 text-xs text-slate-400">
-                      {calculateSlotUsage.occupied} belegt, {calculateSlotUsage.reserved} reserviert
-                    </div>
-                  )}
-                </dd>
-              </div>
-              <div className="rounded-lg bg-black/40 p-3">
-                <dt className="text-xs uppercase tracking-wide text-yellow-300">Aktive Bauaufträge</dt>
-                <dd className="font-semibold">
-                  {activeOrders.length === 0 ? (
-                    'Keine aktiven Aufträge'
-                  ) : (
-                    <>
-                      {activeOrders.length} von {MAX_SHIPYARD_QUEUE}
-                      <div className="mt-2 space-y-1">
-                        {activeOrders.slice(0, 3).map((order) => {
-                          const ship = SHIP_BLUEPRINTS.find((s) => s.id === order.blueprintId);
-                          const progress = Math.round(
-                            ((Date.now() - order.startTime) / (order.endTime - order.startTime)) * 100
-                          );
-                          return (
-                            <div key={order.id} className="text-xs text-slate-300">
-                              {ship?.name} ×{order.quantity} ({Math.max(0, progress)}%)
-                            </div>
-                          );
-                        })}
-                        {activeOrders.length > 3 && (
-                          <div className="text-xs text-slate-400">
-                            +{activeOrders.length - 3} weitere...
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </dd>
-              </div>
-              <div className="rounded-lg bg-black/40 p-3">
-                <dt className="text-xs uppercase tracking-wide text-yellow-300">Ressourcen verfügbar</dt>
-                <dd className="space-y-1 font-semibold">
-                  <div className="text-yellow-200">⚙️ {formatCost(resources[ResourceType.Orichalkum])}</div>
-                  <div className="text-blue-200">💠 {formatCost(resources[ResourceType.Fokuskristalle])}</div>
-                  <div className="text-red-200">☠️ {formatCost(resources[ResourceType.Vitriol])}</div>
-                </dd>
-              </div>
-            </dl>
-          </div>
-          <div className="rounded-2xl border border-yellow-800/30 bg-black/45 p-6 shadow-xl">
-            <h3 className="text-[clamp(1.1rem,1vw+0.9rem,1.5rem)] font-cinzel text-yellow-200">Checkliste</h3>
-            <ul className="mt-3 space-y-2 text-sm text-gray-300">
-              <li>✔ Ressourcenpuffer prüfen</li>
-              <li>✔ Hangar-Slots reservieren</li>
-              <li>⏳ Crewzuteilung automatisieren</li>
-              <li>⏳ Missionsplanung ans Backend anbinden</li>
-            </ul>
-          </div>
+          })}
         </div>
       </div>
-    </section>
+    </ProductionBoard>
   );
 };
 
