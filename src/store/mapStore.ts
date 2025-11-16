@@ -4,6 +4,11 @@ import type { HomeSelection, Region, Tile } from '@/data/types';
 import { listRegions } from '@/services/supabase/worldData';
 import { fetchRegion } from '@/services/supabase/gameApi';
 
+/**
+ * Biome type codes used for terrain styling.
+ */
+export type Biome = 'IG' | 'CL' | 'GL' | 'HE' | 'DK' | 'EO' | 'BR' | 'NE';
+
 export interface World {
   regions: Region[];
   selectedRegionId: string | null;
@@ -22,6 +27,8 @@ interface MapState {
   buildMenuTile: Tile | null;
   region: Region | null;
   home: HomeSelection | null;
+  showLegend: boolean;
+  rawMode: boolean;
 }
 
 interface MapActions {
@@ -40,6 +47,8 @@ interface MapActions {
   setRegion: (region: Region) => void;
   toggleAllianceFilter: () => void;
   invalidateRegionCache: (regionId: string) => void;
+  toggleShowLegend: () => void;
+  toggleRawMode: () => void;
 }
 
 const regionCache = new Map<string, Region | null>();
@@ -75,6 +84,8 @@ export const useMapStore = create(
     buildMenuTile: null,
     region: null,
     home: null,
+    showLegend: false,
+    rawMode: false,
 
     init: (home) => {
       set((state) => {
@@ -354,6 +365,18 @@ export const useMapStore = create(
       console.log('[mapStore] Invalidating cache for region:', regionId);
       regionCache.delete(regionId);
       pendingRegionLoads.delete(regionId);
+    },
+
+    toggleShowLegend: () => {
+      set((state) => {
+        state.showLegend = !state.showLegend;
+      });
+    },
+
+    toggleRawMode: () => {
+      set((state) => {
+        state.rawMode = !state.rawMode;
+      });
     },
   })),
 );

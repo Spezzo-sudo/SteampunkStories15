@@ -557,3 +557,23 @@ export interface BattleReport {
   // Timing
   createdAt: number;
 }
+
+/**
+ * Wiki article for in-game handbook.
+ */
+export interface WikiArticle {
+  id: string;
+  title: string;
+  category: string;
+  content: string;
+  searchTags: string[];
+  order?: number;
+}
+
+/**
+ * Wiki data structure for all articles.
+ */
+export interface WikiData {
+  articles: WikiArticle[];
+  version: string;
+}
