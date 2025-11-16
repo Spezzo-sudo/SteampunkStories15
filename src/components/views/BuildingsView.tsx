@@ -1,11 +1,12 @@
 import React, { useCallback } from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { BUILDINGS } from '@/constants';
-import GameCard from '@/components/ui/GameCard';
+import CollapsibleCard from '@/components/ui/CollapsibleCard';
 import { Building } from '@/types';
 
 /**
- * Übersicht aller ausbaubaren Gebäude inklusive Upgrade-Kosten und Bauzeit.
+ * Übersicht aller ausbaubaren Gebäude mit modernem CollapsibleCard-Design.
+ * Compact view zeigt essenzielle Infos, Expanded zeigt vollständige Details.
  */
 const BuildingsView: React.FC = () => {
   const buildings = useGameStore((state) => state.buildings);
@@ -22,13 +23,30 @@ const BuildingsView: React.FC = () => {
     [startUpgrade],
   );
 
+  // Icon mapping für Gebäude
+  const getBuildingIcon = (buildingId: string): string => {
+    const iconMap: Record<string, string> = {
+      'orichalkumMine': '⛏️',
+      'kristallLabor': '💠',
+      'vitrilDestille': '⚗️',
+      'dampfkraftwerk': '🔥',
+      'energiespeicher': '🔋',
+      'lagerhaus': '📦',
+      'forschungslabor': '🧪',
+      'werft': '⚓',
+      'rathaus': '🏛️',
+      'marktplatz': '🏪',
+    };
+    return iconMap[buildingId] || '🏗️';
+  };
+
   return (
     <section className="space-y-8 pb-16">
       <header className="space-y-2">
         <h2 className="text-[clamp(1.8rem,1.2vw+1.5rem,2.4rem)] font-cinzel text-yellow-300">Gebäudeausbau</h2>
-        <p className="text-sm text-gray-300">Organisiere deine Industriekapazitäten in einem responsiven Grid.</p>
+        <p className="text-sm text-gray-300">Klicke auf ein Gebäude für Details oder baue direkt ohne Modal zu öffnen.</p>
       </header>
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {Object.values(BUILDINGS).map((building) => {
           const currentLevel = buildings[building.id] || 0;
           const targetLevel = buildQueue
@@ -42,20 +60,25 @@ const BuildingsView: React.FC = () => {
           const affordable = canAfford(costForNextUpgrade);
 
           return (
-            <GameCard
+            <CollapsibleCard
               key={building.id}
-              name={building.name}
+              id={building.id}
+              icon={getBuildingIcon(building.id)}
+              title={building.name}
               level={currentLevel}
               targetLevel={targetLevel}
-              description={building.description}
-              image={building.image}
-              imageAlt={`${building.name} Illustration`}
-              upgradeCost={costForNextUpgrade}
+              shortDescription={building.description}
+              fullDescription={`${building.description}\n\nDieses Gebäude ist ein essentieller Bestandteil deines Imperiums.`}
+              cost={costForNextUpgrade}
               buildTime={buildTime}
               canAfford={affordable}
-              onUpgrade={() => handleUpgrade(building)}
+              onAction={() => handleUpgrade(building)}
+              actionLabel={isUpgrading ? 'Weiter ausbauen' : 'Ausbauen'}
+              image={building.image}
+              imageAlt={`${building.name} Illustration`}
               isUpgrading={isUpgrading}
               queueLength={buildQueue.length}
+              disabled={buildQueue.length >= 10}
             />
           );
         })}

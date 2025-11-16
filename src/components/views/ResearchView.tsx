@@ -1,7 +1,7 @@
 import React from 'react';
 import { useGameStore } from '@/store/gameStore';
 import { RESEARCH } from '@/constants';
-import GameCard from '@/components/ui/GameCard';
+import CollapsibleCard from '@/components/ui/CollapsibleCard';
 
 const RESEARCH_CATEGORIES = {
   antrieb: [
@@ -86,6 +86,28 @@ const ResearchView: React.FC = () => {
     return RESEARCH_CATEGORIES[activeCategory]?.includes(tech.id);
   });
 
+  // Icon mapping für Technologien
+  const getTechIcon = (techId: string): string => {
+    const iconMap: Record<string, string> = {
+      'aetherdynamik': '⚡',
+      'kolbenAntrieb': '🔧',
+      'dampfjet': '💨',
+      'aethermotor': '🌀',
+      'kesseldruckOptimierung': '⚙️',
+      'differenzmaschinenKalkuel': '🧮',
+      'observatoriumsnetz': '🔭',
+      'panzerungstechnik': '🛡️',
+      'teslaSpulenForschung': '⚡',
+      'lichtbogenIngenieurwesen': '💥',
+      'pulverProjektilkunde': '🔫',
+      'magnetfeldBarrieren': '🧲',
+      'aetherplasmaEntladungen': '⚛️',
+      'spionagetechnologie': '🕵️',
+      'rumpfverstaerkungsLegierungen': '💪',
+    };
+    return iconMap[techId] || '🧪';
+  };
+
   return (
     <section className="space-y-8 pb-16">
       <header className="space-y-3">
@@ -121,7 +143,7 @@ const ResearchView: React.FC = () => {
           ))}
         </div>
       </header>
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {filteredResearch.map((tech) => {
           const currentLevel = research[tech.id] || 0;
           const targetLevel = buildQueue
@@ -136,29 +158,26 @@ const ResearchView: React.FC = () => {
           const requirements = RESEARCH_REQUIREMENTS[tech.id] ?? ['Forschungslabor Stufe 1'];
 
           return (
-            <GameCard
+            <CollapsibleCard
               key={tech.id}
-              name={tech.name}
+              id={tech.id}
+              icon={getTechIcon(tech.id)}
+              title={tech.name}
               level={currentLevel}
               targetLevel={targetLevel}
-              description={tech.description}
-              image={tech.image}
-              imageAlt={`${tech.name} Forschungsgrafik`}
-              upgradeCost={costForNextUpgrade}
+              shortDescription={tech.description}
+              fullDescription={`${tech.description}\n\nDiese Technologie öffnet neue Möglichkeiten für dein Imperium.`}
+              cost={costForNextUpgrade}
               buildTime={buildTime}
               canAfford={affordable}
-              onUpgrade={() => startUpgrade(tech)}
+              onAction={() => startUpgrade(tech)}
+              actionLabel={isUpgrading ? 'Weiter erforschen' : 'Erforschen'}
+              image={tech.image}
+              imageAlt={`${tech.name} Forschungsgrafik`}
               isUpgrading={isUpgrading}
               queueLength={buildQueue.length}
-              meta={(
-                <ul className="flex flex-wrap gap-2 text-xs">
-                  {requirements.map((req) => (
-                    <li key={req} className="rounded-full bg-yellow-900/40 px-3 py-1 text-yellow-200">
-                      {req}
-                    </li>
-                  ))}
-                </ul>
-              )}
+              requirements={requirements}
+              disabled={buildQueue.length >= 10}
             />
           );
         })}
