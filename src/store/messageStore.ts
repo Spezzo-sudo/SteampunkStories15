@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { Message, MessageRoom } from '@/types';
 import { CURRENT_PLAYER_ID, PLAYER_DIRECTORY } from '@/lib/mockFactory';
+import { getSupabaseClient } from '@/services/supabase';
+import { useSessionStore } from '@/store/sessionStore';
 
 interface MessageState {
   rooms: MessageRoom[];
@@ -11,7 +13,7 @@ interface MessageState {
 
 interface MessageActions {
   openRoom: (roomId: string) => void;
-  sendMessage: (roomId: string, body: string) => void;
+  sendMessage: (roomId: string, body: string) => Promise<void>;
   ensureDirectRoom: (playerId: string) => string;
 }
 
@@ -75,25 +77,70 @@ export const useMessageStore = create<MessageState & MessageActions>((set, get) 
 
     openRoom: (roomId) => set({ activeRoomId: roomId }),
 
-    sendMessage: (roomId, body) => {
+    sendMessage: async (roomId, body) => {
       if (!body.trim()) {
         return;
       }
+
+      const profile = useSessionStore.getState().profile;
+      const user = useSessionStore.getState().user;
+
+      if (!profile || !user) {
+        console.error('[messageStore] Cannot send message: no user profile');
+        return;
+      }
+
+      const messageId = `${roomId}-${Date.now()}`;
+      const newMessage: Message = {
+        id: messageId,
+        roomId,
+        authorId: profile.playerId,
+        body: body.trim(),
+        createdAt: Date.now(),
+      };
+
+      // Optimistic update: add to local state immediately
       set((state) => ({
         messages: {
           ...state.messages,
-          [roomId]: [
-            ...(state.messages[roomId] ?? []),
-            {
-              id: `${roomId}-${Date.now()}`,
-              roomId,
-              authorId: state.currentPlayerId,
-              body: body.trim(),
-              createdAt: Date.now(),
-            },
-          ],
+          [roomId]: [...(state.messages[roomId] ?? []), newMessage],
         },
       }));
+
+      // Send to Supabase
+      try {
+        const supabase = getSupabaseClient();
+        const { error } = await supabase.from('messages').insert({
+          id: messageId,
+          room_id: roomId,
+          sender_id: profile.playerId,
+          sender_username: profile.name,
+          content: body.trim(),
+          created_at: new Date().toISOString(),
+        });
+
+        if (error) {
+          console.error('[messageStore] Failed to send message to database:', error);
+          // Optionally: remove optimistic update on error
+          set((state) => ({
+            messages: {
+              ...state.messages,
+              [roomId]: state.messages[roomId]?.filter((m) => m.id !== messageId) ?? [],
+            },
+          }));
+        } else {
+          console.log('[messageStore] Message sent to database successfully');
+        }
+      } catch (error) {
+        console.error('[messageStore] Error sending message:', error);
+        // Remove optimistic update on error
+        set((state) => ({
+          messages: {
+            ...state.messages,
+            [roomId]: state.messages[roomId]?.filter((m) => m.id !== messageId) ?? [],
+          },
+        }));
+      }
     },
 
     ensureDirectRoom: (playerId) => {
