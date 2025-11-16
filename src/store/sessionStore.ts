@@ -3,6 +3,8 @@ import type { User } from '@supabase/supabase-js';
 import { observeAuth, signIn, signOut, ensureDefaultAdmin } from '@/services/supabase/auth';
 import { DEFAULT_ADMIN_CREDENTIALS } from '@/config/authConfig';
 import { fetchOrCreatePlayerProfile } from '@/services/supabase/playerApi';
+import { loadPlayerResources } from '@/services/supabase/resourceSync';
+import { useGameStore } from '@/store/gameStore';
 import type { PlayerProfile } from '@/data/types';
 
 const defaultWorldId = import.meta.env.VITE_WORLD_ID ?? 'playtest-world';
@@ -62,6 +64,16 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ loadingProfile: true, profileError: null });
     try {
       const profile = await fetchOrCreatePlayerProfile(user);
+
+      // Set playerId in gameStore for resource sync
+      useGameStore.getState().setPlayerId(profile.playerId);
+
+      // Load resources from database for local state synchronization
+      const resources = await loadPlayerResources(profile.playerId);
+      if (resources) {
+        useGameStore.setState({ resources });
+      }
+
       set({ profile, loadingProfile: false });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load profile';

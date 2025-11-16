@@ -80,6 +80,9 @@ const KesseldruckDisplay: React.FC = () => {
 const TopBar: React.FC = () => {
   const resources = useGameStore((state) => state.resources);
   const storage = useGameStore((state) => state.storage);
+  const lastSyncTime = useGameStore((state) => state.lastSyncTime);
+  const isSyncing = useGameStore((state) => state.isSyncing);
+  const refreshResourcesFromDB = useGameStore((state) => state.refreshResourcesFromDB);
   const sessionUser = useSessionStore((state) => state.user);
   const profile = useSessionStore((state) => state.profile);
   const logout = useSessionStore((state) => state.logout);
@@ -97,61 +100,21 @@ const TopBar: React.FC = () => {
 
   /**
    * Manually refresh resources from the server.
-   * Fetches the latest settlement data and updates the gameStore.
+   * Uses the store's refreshResourcesFromDB action which handles all logic.
    */
   const handleRefreshResources = async () => {
-    if (!profile?.playerId) {
-      pushToast({
-        title: 'Fehler',
-        description: 'Kein Spielerprofil geladen.',
-        variant: ToastVariant.Error,
-      });
-      return;
-    }
+    await refreshResourcesFromDB();
+  };
 
-    setIsRefreshing(true);
-    try {
-      const settlements = await getPlayerSettlements(profile.playerId);
-
-      if (settlements.length === 0) {
-        pushToast({
-          title: 'Keine Siedlung',
-          description: 'Du hast noch keine Siedlung platziert.',
-          variant: ToastVariant.Warning,
-        });
-        setIsRefreshing(false);
-        return;
-      }
-
-      // Use first settlement as main base (for now)
-      const mainSettlement = settlements[0];
-
-      if (mainSettlement.resources) {
-        // Update gameStore with fresh data from server
-        useGameStore.setState({
-          resources: {
-            [ResourceType.Orichalkum]: mainSettlement.resources.Orichalkum || 0,
-            [ResourceType.Fokuskristalle]: mainSettlement.resources.Fokuskristalle || 0,
-            [ResourceType.Vitriol]: mainSettlement.resources.Vitriol || 0,
-          },
-        });
-
-        pushToast({
-          title: 'Ressourcen aktualisiert',
-          description: 'Daten vom Server geladen.',
-          variant: ToastVariant.Success,
-        });
-      }
-    } catch (error) {
-      console.error('[TopBar] Failed to refresh resources:', error);
-      pushToast({
-        title: 'Aktualisierung fehlgeschlagen',
-        description: error instanceof Error ? error.message : 'Unbekannter Fehler',
-        variant: ToastVariant.Error,
-      });
-    } finally {
-      setIsRefreshing(false);
-    }
+  /**
+   * Format the last sync time in a human-readable way.
+   */
+  const formatLastSync = () => {
+    if (!lastSyncTime) return 'Noch nie synchronisiert';
+    const secondsAgo = Math.floor((Date.now() - lastSyncTime) / 1000);
+    if (secondsAgo < 60) return `Vor ${secondsAgo}s`;
+    if (secondsAgo < 3600) return `Vor ${Math.floor(secondsAgo / 60)}m`;
+    return `Vor ${Math.floor(secondsAgo / 3600)}h`;
   };
 
   return (
@@ -173,6 +136,25 @@ const TopBar: React.FC = () => {
           capacity={storage[ResourceType.Vitriol]}
         />
         <KesseldruckDisplay />
+        <div className="flex flex-col gap-1 rounded-lg bg-black/30 p-3 shadow-sm">
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={handleRefreshResources}
+              disabled={isSyncing}
+              title={formatLastSync()}
+              className={`flex items-center gap-2 rounded-lg px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
+                isSyncing
+                  ? 'cursor-wait bg-amber-900/30 text-amber-600'
+                  : 'bg-amber-700/40 text-amber-300 hover:bg-amber-600/50 hover:text-amber-100'
+              }`}
+            >
+              <span className={isSyncing ? 'animate-spin' : ''}>🔄</span>
+              Synchronisieren
+            </button>
+          </div>
+          <div className="text-[10px] text-gray-400">{formatLastSync()}</div>
+        </div>
       </div>
 
       {/* Manual Refresh Button */}

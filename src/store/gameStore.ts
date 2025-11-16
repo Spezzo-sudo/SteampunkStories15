@@ -35,6 +35,7 @@ import {
 } from '@/lib/requirements';
 import { ToastVariant, useUiStore } from '@/store/uiStore';
 import { useMapStore } from '@/store/mapStore';
+import { syncPlayerResources, loadPlayerResources } from '@/services/supabase/resourceSync';
 
 interface GameState {
   resources: Resources;
@@ -49,6 +50,11 @@ interface GameState {
   research: Record<string, number>;
   activeView: View;
   buildQueue: BuildQueueItem[];
+  // Resource sync tracking
+  tickCount: number;
+  lastSyncTime: number | null;
+  isSyncing: boolean;
+  playerId: string | null;
 }
 
 interface GameActions {
@@ -60,6 +66,8 @@ interface GameActions {
   getUpgradeCost: (entity: Building | Research, targetLevel: number) => Resources;
   getBuildTime: (cost: Resources) => number;
   startUpgrade: (entity: Building | Research) => void;
+  setPlayerId: (id: string | null) => void;
+  refreshResourcesFromDB: () => Promise<void>;
 }
 
 const RESOURCE_TYPES = Object.values(ResourceType) as ResourceType[];
@@ -80,6 +88,10 @@ const initialState: GameState = {
   research: { ...INITIAL_RESEARCH_LEVELS },
   activeView: View.Uebersicht,
   buildQueue: [],
+  tickCount: 0,
+  lastSyncTime: null,
+  isSyncing: false,
+  playerId: null,
 };
 
 /**
@@ -254,10 +266,69 @@ export const useGameStore = create<GameState & GameActions>()(
           const nextAmount = state.resources[resource] + income[resource];
           state.resources[resource] = Math.min(state.storage[resource], nextAmount);
         });
+
+        // Auto-sync resources every 30 ticks (30 seconds)
+        state.tickCount++;
+        if (state.tickCount % 30 === 0 && state.playerId && !state.isSyncing) {
+          state.isSyncing = true;
+          // Async sync happens outside of immer
+          syncPlayerResources(state.playerId, state.resources).then((success) => {
+            if (success) {
+              useGameStore.setState({
+                lastSyncTime: Date.now(),
+                isSyncing: false,
+              });
+            } else {
+              useGameStore.setState({ isSyncing: false });
+            }
+          });
+        }
       });
       if (completionToasts.length > 0) {
         const { pushToast } = useUiStore.getState();
         completionToasts.forEach((toast) => pushToast(toast));
+      }
+    },
+
+    setPlayerId: (id) => set({ playerId: id, lastSyncTime: null }),
+
+    refreshResourcesFromDB: async () => {
+      const state = get();
+      if (!state.playerId) {
+        console.warn('[gameStore] Cannot refresh resources: no playerId set');
+        return;
+      }
+
+      set({ isSyncing: true });
+      try {
+        const freshResources = await loadPlayerResources(state.playerId);
+        if (freshResources) {
+          set({
+            resources: freshResources,
+            lastSyncTime: Date.now(),
+            isSyncing: false,
+          });
+          useUiStore.getState().pushToast({
+            title: 'Ressourcen aktualisiert',
+            description: 'Deine Ressourcen wurden vom Server synchronisiert.',
+            variant: ToastVariant.Success,
+          });
+        } else {
+          set({ isSyncing: false });
+          useUiStore.getState().pushToast({
+            title: 'Synchronisierung fehlgeschlagen',
+            description: 'Ressourcen konnten nicht vom Server abgerufen werden.',
+            variant: ToastVariant.Warning,
+          });
+        }
+      } catch (err) {
+        console.error('[gameStore] Error refreshing resources:', err);
+        set({ isSyncing: false });
+        useUiStore.getState().pushToast({
+          title: 'Fehler bei Synchronisierung',
+          description: 'Ein Fehler ist bei der Ressourcen-Synchronisierung aufgetreten.',
+          variant: ToastVariant.Warning,
+        });
       }
     },
   })),
