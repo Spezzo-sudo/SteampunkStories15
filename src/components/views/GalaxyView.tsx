@@ -47,7 +47,6 @@ export default function GalaxyView(): React.ReactElement {
   // Set worldId in mapStore if not already set
   useEffect(() => {
     if (sessionWorldId && !useMapStore.getState().worldId) {
-      console.log('[GalaxyView] Setting worldId:', sessionWorldId);
       setWorldId(sessionWorldId);
     }
   }, [sessionWorldId, setWorldId]);
@@ -60,24 +59,20 @@ export default function GalaxyView(): React.ReactElement {
 
     const mapStoreWorldId = useMapStore.getState().worldId;
     if (!mapStoreWorldId) {
-      console.log('[GalaxyView] Waiting for worldId to be set...');
       return;
     }
 
     // Check if world is already loaded
     const currentWorld = useMapStore.getState().world;
     if (currentWorld && currentWorld.regions.length > 0) {
-      console.log('[GalaxyView] World already loaded, skipping reload');
       return;
     }
 
     // Guard to ensure world data is loaded only once
     if (didLoadWorld.current) {
-      console.log('[GalaxyView] World load already in progress');
       return;
     }
 
-    console.log('[GalaxyView] Loading world for userId:', userId, 'worldId:', mapStoreWorldId);
     didLoadWorld.current = true;
     useMapStore.getState().loadWorld();
   }, [userId]);

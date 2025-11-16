@@ -1,7 +1,7 @@
 import React, { useCallback } from 'react';
 import { useGameStore } from '@/store/gameStore';
-import { RESEARCH, BUILDINGS } from '@/constants';
-import CollapsibleCard from '@/components/ui/CollapsibleCard';
+import { RESEARCH, BUILDINGS, MAX_BUILD_QUEUE_LENGTH } from '@/constants';
+import GameObjectCard from '@/components/ui/GameObjectCard';
 import { canResearch } from '@/lib/requirements';
 
 const RESEARCH_CATEGORIES = {
@@ -172,7 +172,7 @@ const ResearchView: React.FC = () => {
           ))}
         </div>
       </header>
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-2 2xl:grid-cols-3">
         {filteredResearch.map((tech) => {
           const currentLevel = research[tech.id] || 0;
           const targetLevel = buildQueue
@@ -190,15 +190,15 @@ const ResearchView: React.FC = () => {
           const requirementsText = buildResearchRequirementsText(tech, research, buildings);
 
           return (
-            <CollapsibleCard
+            <GameObjectCard
               key={tech.id}
               id={tech.id}
               icon={getResearchIcon(tech.id)}
               title={tech.name}
               level={currentLevel}
               targetLevel={targetLevel}
-              shortDescription={tech.description}
-              fullDescription={`${tech.description}\n\nDiese Forschung ist ein essentieller Bestandteil deines wissenschaftlichen Fortschritts.`}
+              flavorText={tech.flavorText || tech.description}
+              fullDescription={`${tech.description}\n\n${tech.flavorText || ''}`}
               cost={costForNextUpgrade}
               buildTime={buildTime}
               canAfford={affordable}
@@ -209,7 +209,7 @@ const ResearchView: React.FC = () => {
               isUpgrading={isUpgrading}
               queueLength={buildQueue.length}
               requirements={requirementsText.length > 0 ? requirementsText : undefined}
-              disabled={!validation.canDo || buildQueue.length >= 10}
+              disabled={!validation.canDo || buildQueue.length >= MAX_BUILD_QUEUE_LENGTH}
             />
           );
         })}

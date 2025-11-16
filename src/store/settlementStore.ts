@@ -623,7 +623,6 @@ export const useSettlementStore = create<SettlementState & SettlementActions>()(
           if (shipIndex !== -1) {
             state.stationedShipsByTile[tileId].splice(shipIndex, 1);
             // TODO: Move back to origin settlement
-            console.log(`Ship ${ship.name} recalled from ${tileId}`);
           }
         });
       });
